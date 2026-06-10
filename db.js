@@ -56,6 +56,7 @@ const DB = {
       chart_links TEXT DEFAULT '[]'
     );`);
     d.run(`CREATE TABLE IF NOT EXISTS tombstones (uid TEXT PRIMARY KEY, deleted_at TEXT);`);
+    d.run(`CREATE TABLE IF NOT EXISTS account_tombstones (name TEXT PRIMARY KEY, deleted_at TEXT);`);
     this.tryRun(d, "ALTER TABLE trades ADD COLUMN uid TEXT");
     // deterministic uid backfill — identical formula to iOS so merges dedupe
     d.run("UPDATE trades SET uid = created_at || '|' || trade_date || '|' || trade_time || '|' || COALESCE(symbol,'') WHERE uid IS NULL OR uid = ''");
@@ -101,14 +102,21 @@ const DB = {
         this.run("INSERT OR IGNORE INTO tombstones (uid, deleted_at) VALUES (?, ?)", [t.uid, t.deleted_at || '']);
       }
 
-      // accounts: insert remote accounts missing locally (keyed by name)
+      // account tombstones: union, so account deletions propagate like trade deletions
+      for (const t of rq("SELECT name, deleted_at FROM account_tombstones WHERE name IS NOT NULL AND name != ''")) {
+        this.run("INSERT OR IGNORE INTO account_tombstones (name, deleted_at) VALUES (?, ?)", [t.name, t.deleted_at || '']);
+      }
+
+      // accounts: insert remote accounts missing locally (keyed by name), unless tombstoned
       const localNames = new Set(this.q("SELECT name FROM accounts").map(a => a.name));
+      const deadNames = new Set(this.q("SELECT name FROM account_tombstones").map(a => a.name));
       for (const a of rq("SELECT name, balance, equity, acc_type, target_pct, created_at FROM accounts")) {
-        if (!localNames.has(a.name)) {
+        if (!localNames.has(a.name) && !deadNames.has(a.name)) {
           this.run("INSERT INTO accounts (name, balance, equity, acc_type, target_pct, created_at) VALUES (?,?,?,?,?,?)",
             [a.name, a.balance || 0, a.equity || 0, a.acc_type || 'Demo', a.target_pct || 0, a.created_at || '']);
         }
       }
+      this.run("DELETE FROM accounts WHERE name IN (SELECT name FROM account_tombstones)");
 
       // trades: union by uid, last-writer-wins on updated_at
       const localUpdated = {};
@@ -189,6 +197,8 @@ const DB = {
   },
 
   addAccount(a) {
+    // re-creating a previously deleted name must clear its tombstone, or the merge would delete it again
+    this.run("DELETE FROM account_tombstones WHERE name = ?", [a.name]);
     this.run("INSERT INTO accounts (name, balance, equity, acc_type, target_pct) VALUES (?,?,?,?,?)",
       [a.name, a.balance || 0, a.equity || 0, a.acc_type || 'Demo', a.target_pct || 0]);
   },
@@ -198,6 +208,8 @@ const DB = {
   },
 
   deleteAccount(id) {
+    // tombstone first so the deletion propagates to the iPhone on its next sync
+    this.run("INSERT OR IGNORE INTO account_tombstones (name, deleted_at) SELECT name, datetime('now') FROM accounts WHERE id = ?", [id]);
     this.run("DELETE FROM accounts WHERE id=?", [id]);
   },
 };
