@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Trading Journal</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.2/dist/sql-wasm.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo"><i class="bi bi-graph-up-arrow"></i></div>
+    <h1>Trading Journal</h1>
+    <p class="login-sub">Your journal, synced through Google&nbsp;Drive.<br>Same data as your iPhone app.</p>
+    <button id="signInBtn" class="btn-tj btn-primary-tj" style="font-size:.95rem;padding:12px 26px;" onclick="signIn()">
+      <i class="bi bi-google"></i>&nbsp; Sign in with Google
+    </button>
+    <div id="loginStatus" class="login-status"></div>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div id="appShell" style="display:none;">
+  <main class="main-content" id="view"></main>
+
+  <nav class="tabbar">
+    <a href="#dashboard" data-tab="dashboard"><i class="bi bi-calendar3"></i><span>Calendar</span></a>
+    <a href="#trades" data-tab="trades"><i class="bi bi-list-ul"></i><span>Trades</span></a>
+    <a href="#add" class="tabbar-add" title="New Entry"><i class="bi bi-plus"></i></a>
+    <a href="#analytics" data-tab="analytics"><i class="bi bi-bar-chart-line"></i><span>Analytics</span></a>
+    <a href="#accounts" data-tab="accounts"><i class="bi bi-person-circle"></i><span>Account</span></a>
+  </nav>
+</div>
+
+<!-- SYNC PILL -->
+<div id="syncPill" style="display:none;" onclick="syncNow(true)" title="Tap to sync now">
+  <i class="bi bi-icloud" id="syncIcon"></i><span id="syncText">…</span>
+</div>
+
+<!-- DAY MODAL -->
+<div class="modal-backdrop" id="dayModalBackdrop" onclick="if(event.target===this)closeModal('dayModalBackdrop')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="dayModalTitle">—</h3>
+      <button class="close-modal" onclick="closeModal('dayModalBackdrop')">✕</button>
+    </div>
+    <div id="dayModalBody"></div>
+  </div>
+</div>
+
+<!-- ADD ACCOUNT MODAL -->
+<div class="modal-backdrop" id="accModalBackdrop" onclick="if(event.target===this)closeModal('accModalBackdrop')">
+  <div class="modal-card" style="width:380px;">
+    <div class="modal-header"><h3>New Account</h3>
+      <button class="close-modal" onclick="closeModal('accModalBackdrop')">✕</button>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label class="form-label-tj">Account Name</label>
+      <input type="text" id="accName" class="form-control-tj" placeholder="e.g. 50K FTMO">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label class="form-label-tj">Starting Balance ($)</label>
+      <input type="number" step="0.01" id="accBalance" class="form-control-tj" placeholder="e.g. 25000">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label class="form-label-tj">Type</label>
+      <select id="accType" class="form-control-tj">
+        <option value="Demo">Demo</option>
+        <option value="Live">Live</option>
+        <option value="Funded">Funded</option>
+        <option value="Evaluation">Evaluation</option>
+      </select>
+    </div>
+    <div style="margin-bottom:16px;">
+      <label class="form-label-tj">Profit Target % (optional)</label>
+      <input type="number" step="0.1" id="accTarget" class="form-control-tj" placeholder="e.g. 8">
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-tj btn-ghost" onclick="closeModal('accModalBackdrop')">Cancel</button>
+      <button class="btn-tj btn-primary-tj" onclick="saveNewAccount()">Add Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPDATE BALANCE MODAL -->
+<div class="modal-backdrop" id="balModalBackdrop" onclick="if(event.target===this)closeModal('balModalBackdrop')">
+  <div class="modal-card" style="width:340px;">
+    <div class="modal-header"><h3 id="balModalTitle">Update Balance</h3>
+      <button class="close-modal" onclick="closeModal('balModalBackdrop')">✕</button>
+    </div>
+    <label class="form-label-tj">Latest Balance ($)</label>
+    <input type="number" step="0.01" id="balInput" class="form-control-tj"
+           style="font-size:1.3rem;font-weight:700;" oninput="balPreview()">
+    <div id="balProfit" style="margin:10px 2px 16px;font-size:.85rem;color:var(--muted);"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-tj btn-ghost" onclick="closeModal('balModalBackdrop')">Cancel</button>
+      <button class="btn-tj btn-primary-tj" onclick="saveBalance()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="db.js"></script>
+<script src="drive.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
