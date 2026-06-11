@@ -267,3 +267,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .bt-bar{height:8px;border-radius:4px;min-width:2px;}
 .bt-bar.pos{background:rgba(63,185,80,.65);}
 .bt-bar.neg{background:rgba(248,81,73,.65);}
+
+/* equity-curve click → day preview: the clicked trade is marked */
+.day-row-highlight{
+  background:rgba(10,132,255,.10);
+  border-left:3px solid var(--blue);
+  border-radius:10px;
+  padding-left:10px !important;
+  padding-right:10px !important;
+}
