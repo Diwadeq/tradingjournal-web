@@ -12,6 +12,7 @@ const MONTH_NAMES = ['January','February','March','April','May','June','July','A
 
 // ── State ────────────────────────────────────────────────────────────────────
 const S = {
+  mode: null,        // 'journal' | 'bt' — which workspace is active
   trades: [],        // all entries, newest first
   accounts: [],
   calYear: new Date().getFullYear(),
@@ -116,28 +117,83 @@ async function signIn() {
     Drive.init();
     try { await Drive.requestToken(''); }
     catch (e) { await Drive.requestToken('consent'); }
+    sessionStorage.removeItem('tj_mode'); // fresh sign-in → always offer the choice
     await enterApp();
   } catch (e) {
     setLoginStatus('Sign-in failed: ' + e.message, true);
   }
 }
 
+// After auth: show the workspace chooser, or jump straight back into the
+// workspace this tab was already using (page reload with a live token).
 async function enterApp() {
-  setLoginStatus('Loading your journal from Drive…');
-  let bytes = null;
-  try {
-    bytes = await Drive.download();
-  } catch (e) {
-    setLoginStatus('Could not load journal.db: ' + e.message, true);
-    return;
-  }
-  await DB.init(bytes);
-  loadState();
   document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appShell').style.display = '';
+  const saved = sessionStorage.getItem('tj_mode');
+  if (saved === 'journal' || saved === 'bt') await chooseMode(saved);
+  else openChooser();
+}
+
+function setChooseStatus(msg, isErr) {
+  const el = document.getElementById('chooseStatus');
+  el.textContent = msg || '';
+  el.className = 'login-status' + (isErr ? ' err' : '');
+}
+
+function openChooser() {
+  setChooseStatus('');
+  document.getElementById('chooseClose').style.display = S.mode ? '' : 'none';
+  document.getElementById('chooseScreen').style.display = 'flex';
+}
+
+function closeChooser() {
+  if (!S.mode) return;
+  document.getElementById('chooseScreen').style.display = 'none';
+}
+
+function switchWorkspace() {
+  chooseMode(S.mode === 'bt' ? 'journal' : 'bt');
+}
+
+function updateModePill() {
+  const pill = document.getElementById('modePill');
+  pill.style.display = 'flex';
+  pill.className = S.mode === 'bt' ? 'bt' : '';
+  document.getElementById('modeIcon').className = 'bi ' + (S.mode === 'bt' ? 'bi-clipboard2-data' : 'bi-journal-richtext');
+  document.getElementById('modeText').textContent = S.mode === 'bt' ? 'Backtest' : 'Journal';
+}
+
+// Show the right shell for a mode (also used when back/forward crosses modes)
+function setShellMode(mode) {
+  S.mode = mode;
+  sessionStorage.setItem('tj_mode', mode);
+  document.getElementById('appShell').style.display = mode === 'journal' ? '' : 'none';
+  document.getElementById('btShell').style.display = mode === 'bt' ? '' : 'none';
   document.getElementById('syncPill').style.display = 'flex';
-  setSync(bytes ? 'ok' : 'pending', bytes ? syncedLabel() : 'no remote DB yet');
-  if (!location.hash || location.hash === '#') location.hash = '#dashboard';
+  updateModePill();
+}
+
+async function chooseMode(mode) {
+  openChooser(); // keep the chooser visible while the DB loads
+  const fileName = mode === 'bt' ? CONFIG.BT_DB_FILE_NAME : CONFIG.DB_FILE_NAME;
+  const isLoaded = mode === 'bt' ? !!BTDB.db : !!DB.db;
+  if (!isLoaded) {
+    setChooseStatus(`Loading ${fileName} from Drive…`);
+    let bytes = null;
+    try {
+      bytes = await Drive.download(fileName);
+    } catch (e) {
+      setChooseStatus(`Could not load ${fileName}: ` + e.message, true);
+      return;
+    }
+    if (mode === 'bt') { await BTDB.init(bytes); loadBT(); }
+    else { await DB.init(bytes); loadState(); }
+    setSync(bytes ? 'ok' : 'pending', bytes ? syncedLabel() : 'no remote DB yet');
+  }
+  setShellMode(mode);
+  document.getElementById('chooseScreen').style.display = 'none';
+  const h = location.hash || '';
+  if (mode === 'bt' && !h.startsWith('#bt')) location.hash = '#bt-dashboard';
+  else if (mode === 'journal' && (h.startsWith('#bt') || !h || h === '#')) location.hash = '#dashboard';
   renderRoute();
 }
 
@@ -157,18 +213,27 @@ function setSync(state, text) {
 function scheduleSync() {
   setSync('pending', 'Saving…');
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => syncNow(false), 1200);
+  const mode = S.mode; // capture, in case the user switches workspace meanwhile
+  syncTimer = setTimeout(() => syncNow(false, mode), 1200);
 }
 
-async function syncNow(manual) {
+async function syncNow(manual, mode = S.mode) {
   clearTimeout(syncTimer);
   setSync('syncing', 'Syncing…');
   try {
-    Drive.fileId = null; // re-resolve so a DB created elsewhere is found
-    const remote = await Drive.download();
-    if (remote) DB.merge(remote);
-    await Drive.upload(DB.export());
-    loadState();
+    if (mode === 'bt') {
+      Drive.forget(CONFIG.BT_DB_FILE_NAME); // re-resolve so a DB created elsewhere is found
+      const remote = await Drive.download(CONFIG.BT_DB_FILE_NAME);
+      if (remote) BTDB.merge(remote);
+      await Drive.upload(CONFIG.BT_DB_FILE_NAME, BTDB.export());
+      loadBT();
+    } else {
+      Drive.forget(CONFIG.DB_FILE_NAME);
+      const remote = await Drive.download(CONFIG.DB_FILE_NAME);
+      if (remote) DB.merge(remote);
+      await Drive.upload(CONFIG.DB_FILE_NAME, DB.export());
+      loadState();
+    }
     setSync('ok', syncedLabel());
     if (manual) renderRoute();
   } catch (e) {
@@ -181,9 +246,17 @@ async function syncNow(manual) {
 window.addEventListener('hashchange', renderRoute);
 
 function renderRoute() {
-  if (!DB.db) return;
   destroyCharts();
   const h = location.hash || '#dashboard';
+  if (h.startsWith('#bt')) {
+    if (!BTDB.db) { if (S.mode) chooseMode('bt'); return; } // deep link / back into bt before it's loaded
+    if (S.mode !== 'bt') setShellMode('bt');
+    btRoute(h);
+    window.scrollTo(0, 0);
+    return;
+  }
+  if (!DB.db) { if (S.mode) chooseMode('journal'); return; }
+  if (S.mode !== 'journal') setShellMode('journal');
   let tab = 'dashboard';
   if (h.startsWith('#edit-')) { renderForm(parseInt(h.slice(6), 10)); tab = 'trades'; }
   else if (h === '#add') { renderForm(null); tab = 'trades'; }
@@ -191,7 +264,7 @@ function renderRoute() {
   else if (h === '#analytics') { renderAnalytics(); tab = 'analytics'; }
   else if (h === '#accounts') { renderAccounts(); tab = 'accounts'; }
   else renderDashboard();
-  document.querySelectorAll('.tabbar a[data-tab]').forEach(a =>
+  document.querySelectorAll('#appShell .tabbar a[data-tab]').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === tab));
   window.scrollTo(0, 0);
 }
@@ -1141,7 +1214,8 @@ function renderAccounts() {
   document.getElementById('view').innerHTML = `
   <div class="page-header">
     <h1 class="page-title">Accounts</h1>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-tj btn-ghost" onclick="switchWorkspace()" title="Switch to Backtesting"><i class="bi bi-clipboard2-data"></i> Backtesting</button>
       <button class="btn-tj btn-ghost" onclick="signOutApp()" title="Sign out"><i class="bi bi-box-arrow-right"></i></button>
       <button class="btn-tj btn-primary-tj" onclick="document.getElementById('accModalBackdrop').classList.add('open')">
         <i class="bi bi-plus-lg"></i> New Account
@@ -1220,5 +1294,6 @@ function saveBalance() {
 function signOutApp() {
   if (!confirm('Sign out of Google Drive?')) return;
   Drive.signOut();
+  sessionStorage.removeItem('tj_mode');
   location.reload();
 }

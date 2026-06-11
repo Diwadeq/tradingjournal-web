@@ -8,4 +8,5 @@ const CONFIG = {
   SCOPE: 'https://www.googleapis.com/auth/drive.file',
   FOLDER_NAME: 'TradingJournalSync',
   DB_FILE_NAME: 'journal.db',
+  BT_DB_FILE_NAME: 'backtest.db',
 };

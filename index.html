@@ -9,6 +9,7 @@
 <link href="style.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.2/dist/sql-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -26,6 +27,30 @@
   </div>
 </div>
 
+<!-- WORKSPACE CHOOSER (shown right after sign-in) -->
+<div id="chooseScreen" style="display:none;">
+  <button class="choose-close" id="chooseClose" onclick="closeChooser()" style="display:none;">✕</button>
+  <div class="choose-wrap">
+    <h1>Choose your workspace</h1>
+    <p class="login-sub" style="margin-bottom:30px;">Both sync to Google Drive — in separate files,<br>so backtests never mix with your real journal.</p>
+    <div class="choose-cards">
+      <div class="choose-card" onclick="chooseMode('journal')">
+        <div class="choose-icon journal"><i class="bi bi-journal-richtext"></i></div>
+        <h2>Real Journal</h2>
+        <p>Your live trading journal — same data as the iPhone app.</p>
+        <span class="choose-file">journal.db</span>
+      </div>
+      <div class="choose-card bt" onclick="chooseMode('bt')">
+        <div class="choose-icon bt"><i class="bi bi-clipboard2-data"></i></div>
+        <h2>Backtesting</h2>
+        <p>Strategy lab — R-based stats, SL &amp; TP optimizers, Excel import.</p>
+        <span class="choose-file">backtest.db</span>
+      </div>
+    </div>
+    <div id="chooseStatus" class="login-status"></div>
+  </div>
+</div>
+
 <!-- APP SHELL -->
 <div id="appShell" style="display:none;">
   <main class="main-content" id="view"></main>
@@ -37,6 +62,24 @@
     <a href="#analytics" data-tab="analytics"><i class="bi bi-bar-chart-line"></i><span>Analytics</span></a>
     <a href="#accounts" data-tab="accounts"><i class="bi bi-person-circle"></i><span>Account</span></a>
   </nav>
+</div>
+
+<!-- BACKTEST SHELL -->
+<div id="btShell" style="display:none;">
+  <main class="main-content" id="btView"></main>
+
+  <nav class="tabbar bt" id="btTabbar">
+    <a href="#bt-dashboard" data-tab="bt-dashboard"><i class="bi bi-speedometer2"></i><span>Overview</span></a>
+    <a href="#bt-trades" data-tab="bt-trades"><i class="bi bi-list-ul"></i><span>Trades</span></a>
+    <a href="#bt-add" class="tabbar-add bt" title="Log Backtest Trade"><i class="bi bi-plus"></i></a>
+    <a href="#bt-analytics" data-tab="bt-analytics"><i class="bi bi-bar-chart-line"></i><span>Analytics</span></a>
+    <a href="#bt-strategies" data-tab="bt-strategies"><i class="bi bi-collection"></i><span>Strategies</span></a>
+  </nav>
+</div>
+
+<!-- MODE PILL -->
+<div id="modePill" style="display:none;" onclick="openChooser()" title="Switch workspace">
+  <i class="bi bi-journal-richtext" id="modeIcon"></i><span id="modeText">Journal</span><i class="bi bi-chevron-down" style="font-size:.6rem;"></i>
 </div>
 
 <!-- SYNC PILL -->
@@ -106,9 +149,34 @@
   </div>
 </div>
 
+<!-- EXCEL IMPORT MODAL -->
+<div class="modal-backdrop" id="btImportBackdrop" onclick="if(event.target===this)closeModal('btImportBackdrop')">
+  <div class="modal-card" style="width:440px;">
+    <div class="modal-header"><h3><i class="bi bi-file-earmark-excel" style="color:var(--green);"></i> Import Backtest Excel</h3>
+      <button class="close-modal" onclick="closeModal('btImportBackdrop')">✕</button>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label class="form-label-tj">Sheet</label>
+      <select id="btImportSheet" class="form-control-tj" onchange="btPreviewImport()"></select>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label class="form-label-tj">Import into Strategy</label>
+      <input type="text" id="btImportStrategy" class="form-control-tj" placeholder="strategy name"
+             oninput="this.dataset.touched=1" onchange="btPreviewImport()">
+    </div>
+    <div id="btImportPreview" style="font-size:.8rem;color:var(--muted);background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:16px;min-height:48px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-tj btn-ghost" onclick="closeModal('btImportBackdrop')">Cancel</button>
+      <button class="btn-tj btn-bt" onclick="btRunImport()"><i class="bi bi-download"></i> Import</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="btFileInput" accept=".xlsx,.xls" style="display:none;" onchange="btFileChosen(this)">
+
 <script src="config.js"></script>
 <script src="db.js"></script>
 <script src="drive.js"></script>
+<script src="bt.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
