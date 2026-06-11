@@ -6,7 +6,7 @@ const Drive = {
   expiry: 0,
   tokenClient: null,
   folderId: null,
-  fileId: null,
+  fileIds: {},   // file name → Drive file id (journal.db, backtest.db, …)
 
   init() {
     this.tokenClient = google.accounts.oauth2.initTokenClient({
@@ -82,18 +82,22 @@ const Drive = {
     return this.folderId;
   },
 
-  async findFile() {
+  // Drop the cached file id so the next call re-resolves it (a DB created on
+  // another device since our last look-up is then found).
+  forget(name) { delete this.fileIds[name]; },
+
+  async findFile(name) {
     const folderId = await this.findOrCreateFolder();
-    const q = encodeURIComponent(`name='${CONFIG.DB_FILE_NAME}' and '${folderId}' in parents and trashed=false`);
+    const q = encodeURIComponent(`name='${name}' and '${folderId}' in parents and trashed=false`);
     const resp = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`);
     const json = await resp.json();
-    this.fileId = (json.files && json.files.length) ? json.files[0].id : null;
-    return this.fileId;
+    this.fileIds[name] = (json.files && json.files.length) ? json.files[0].id : null;
+    return this.fileIds[name];
   },
 
-  // Returns Uint8Array of the remote journal.db, or null if it doesn't exist.
-  async download() {
-    const id = await this.findFile();
+  // Returns Uint8Array of the remote DB file, or null if it doesn't exist.
+  async download(name) {
+    const id = await this.findFile(name);
     if (!id) return null;
     const resp = await this.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
     const buf = new Uint8Array(await resp.arrayBuffer());
@@ -105,8 +109,8 @@ const Drive = {
     return buf;
   },
 
-  async upload(bytes) {
-    const id = await this.findFile();
+  async upload(name, bytes) {
+    const id = await this.findFile(name);
     if (id) {
       await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
         method: 'PATCH',
@@ -116,7 +120,7 @@ const Drive = {
     } else {
       const folderId = await this.findOrCreateFolder();
       const boundary = crypto.randomUUID();
-      const meta = JSON.stringify({ name: CONFIG.DB_FILE_NAME, parents: [folderId] });
+      const meta = JSON.stringify({ name, parents: [folderId] });
       const head = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`;
       const tail = `\r\n--${boundary}--`;
       const body = new Blob([head, bytes, tail]);
