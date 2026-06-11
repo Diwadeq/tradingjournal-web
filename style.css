@@ -207,3 +207,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 /* ACCOUNTS */
 .acc-progress-track{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;margin-top:6px;}
 .acc-progress-fill{height:100%;border-radius:3px;}
+
+/* equity-curve click → day preview: the clicked trade is marked */
+.day-row-highlight{
+  background:rgba(10,132,255,.10);
+  border-left:3px solid var(--blue);
+  border-radius:10px;
+  padding-left:10px !important;
+  padding-right:10px !important;
+}

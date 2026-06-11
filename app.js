@@ -32,6 +32,8 @@ const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
+// chart click-to-open is desktop-only: on touch screens the first tap shows the tooltip
+const isDesktopPointer = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 function loadState() {
   S.trades = DB.allTrades();
@@ -350,7 +352,8 @@ function renderDashboard() {
   <div style="height:20px;"></div>`;
 }
 
-function openDayModal(dateStr) {
+// highlightId: when opened from an equity-curve point, that trade is marked + scrolled to
+function openDayModal(dateStr, highlightId) {
   const ts = S.trades.filter(t => t.trade_date === dateStr)
     .sort((a, b) => (a.trade_time || '').localeCompare(b.trade_time || ''));
   document.getElementById('dayModalTitle').textContent = dateStr;
@@ -362,7 +365,7 @@ function openDayModal(dateStr) {
       const pnlColor = t.net_pnl > 0 ? 'var(--green)' : t.net_pnl < 0 ? 'var(--red)' : 'var(--muted)';
       const oc = t.outcome === 'Profit' ? 'badge-profit' : t.outcome === 'Loss' ? 'badge-loss' : 'badge-be';
       const pnl = t.net_pnl != null ? (t.net_pnl >= 0 ? '+' : '') + t.net_pnl.toFixed(2) : '—';
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+      return `<div id="dayTrade_${t.id}" class="${t.id === highlightId ? 'day-row-highlight' : ''}" style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
             ${t.entry_type === 'journal' ? '<span class="badge-outcome badge-journal">Journal</span>' : '<span class="badge-outcome badge-trade">Trade</span>'}
@@ -385,6 +388,11 @@ function openDayModal(dateStr) {
   }
   document.getElementById('dayModalBody').innerHTML = html;
   document.getElementById('dayModalBackdrop').classList.add('open');
+  if (highlightId != null) {
+    setTimeout(() => {
+      document.getElementById('dayTrade_' + highlightId)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 120);
+  }
 }
 
 // ── Trades ───────────────────────────────────────────────────────────────────
@@ -545,7 +553,7 @@ function equityData() {
       peak = Math.max(peak, eq);
       const dd = peak - eq;
       maxDd = Math.max(maxDd, dd);
-      return { date: t.trade_date, time: t.trade_time || '', eq: r2(eq), pnl: t.net_pnl || 0, out: t.outcome || '', sym: t.symbol || '', dd: r2(dd) };
+      return { id: t.id, date: t.trade_date, time: t.trade_time || '', eq: r2(eq), pnl: t.net_pnl || 0, out: t.outcome || '', sym: t.symbol || '', dd: r2(dd) };
     }),
     get peak() { return r2(peak); },
     get maxDd() { return r2(maxDd); },
@@ -599,6 +607,15 @@ function drawMiniEquity() {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+      // desktop: click a point → open that day's preview modal, hovered trade highlighted
+      onClick: (e, els) => {
+        if (!isDesktopPointer() || !els.length) return;
+        const d = eq[els[0].index];
+        if (d) openDayModal(d.date, d.id);
+      },
+      onHover: (e, els) => {
+        if (isDesktopPointer()) e.native.target.style.cursor = els.length ? 'pointer' : 'default';
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -968,6 +985,15 @@ function renderAnalytics() {
       options: {
         responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
+        // desktop: click a point → open that day's preview modal, hovered trade highlighted
+        onClick: (e, els) => {
+          if (!isDesktopPointer() || !els.length) return;
+          const d = eq[els[0].index];
+          if (d) openDayModal(d.date, d.id);
+        },
+        onHover: (e, els) => {
+          if (isDesktopPointer()) e.native.target.style.cursor = els.length ? 'pointer' : 'default';
+        },
         plugins: {
           legend: { display: false },
           tooltip: {
