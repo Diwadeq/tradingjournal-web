@@ -17,7 +17,7 @@ const S = {
   accounts: [],
   calYear: new Date().getFullYear(),
   calMonth: new Date().getMonth() + 1,
-  filters: { outcome: '', direction: '', type: '', q: '' },
+  filters: { outcome: '', direction: '', type: '', q: '', focusId: null }, // focusId: trade picked from the mini equity curve
   presetDate: null,  // date preset when adding from the day modal
   balAccount: null,  // account being balance-updated
   charts: [],
@@ -471,15 +471,17 @@ function openDayModal(dateStr, highlightId) {
 // ── Trades ───────────────────────────────────────────────────────────────────
 function setFilter(key, val) {
   const f = S.filters;
+  f.focusId = null; // any filter interaction returns to the normal list
   if (key === 'all') { f.outcome = ''; f.direction = ''; f.type = ''; }
   else f[key] = f[key] === val ? '' : val;
   renderTrades();
 }
 
-function setSearch(q) { S.filters.q = q; renderTradeList(); }
+function setSearch(q) { S.filters.q = q; S.filters.focusId = null; renderTradeList(); }
 
 function filteredTrades() {
   const f = S.filters;
+  if (f.focusId != null) return S.trades.filter(t => t.id === f.focusId);
   return S.trades.filter(t => {
     if (f.outcome && t.outcome !== f.outcome) return false;
     if (f.direction && t.direction !== f.direction) return false;
@@ -548,7 +550,9 @@ function tradeCardHTML(t) {
 function renderTradeList() {
   const trades = filteredTrades();
   const stats = calcStats(trades);
-  document.getElementById('tradeCount').textContent = `${trades.length} entries`;
+  document.getElementById('tradeCount').textContent = S.filters.focusId != null
+    ? 'trade picked from the equity curve · press All to show everything'
+    : `${trades.length} entries`;
   document.getElementById('statStrip').innerHTML = `
     <div><span>Win Rate</span> <strong class="${stats.win_rate >= 50 ? 'text-green' : 'text-red'}">${stats.win_rate}%</strong></div>
     <div><span>BE Rate</span> <strong>${stats.be_rate}%</strong></div>
@@ -586,7 +590,7 @@ function renderTrades() {
   </div>
 
   <div class="filter-bar">
-    ${pill(!f.outcome && !f.direction && !f.type, 'active', 'All', "setFilter('all')")}
+    ${pill(!f.outcome && !f.direction && !f.type && f.focusId == null, 'active', 'All', "setFilter('all')")}
     ${pill(f.outcome === 'Profit', 'active-profit', '✓ Profit', "setFilter('outcome','Profit')")}
     ${pill(f.outcome === 'Loss', 'active-loss', '✗ Loss', "setFilter('outcome','Loss')")}
     ${pill(f.outcome === 'Break Even', 'active-be', '— BE', "setFilter('outcome','Break Even')")}
@@ -680,11 +684,13 @@ function drawMiniEquity() {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      // desktop: click a point → open that day's preview modal, hovered trade highlighted
+      // desktop: click a point → the list below shows just that trade (All restores it)
       onClick: (e, els) => {
         if (!isDesktopPointer() || !els.length) return;
         const d = eq[els[0].index];
-        if (d) openDayModal(d.date, d.id);
+        if (!d) return;
+        S.filters.focusId = d.id;
+        renderTrades();
       },
       onHover: (e, els) => {
         if (isDesktopPointer()) e.native.target.style.cursor = els.length ? 'pointer' : 'default';
