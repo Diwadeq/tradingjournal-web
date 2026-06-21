@@ -1,0 +1,4 @@
+src-private/
+node_modules/
+build/
+.staticrypt.json
