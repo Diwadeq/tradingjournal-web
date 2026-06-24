@@ -7,9 +7,9 @@ export const BUSINESS = {
   ownerName: "Sebastian Zawada",
   companyName: 'P.H.U. "DUET"',
   fullName: 'Sebastian ZAWADA P.H.U. "DUET"',
-  tagline: "Biuro rachunkowe i usługi budowlane — Lubliniec",
+  tagline: "Biuro rachunkowe — Lubliniec",
   description:
-    "Biuro rachunkowe z ponad 25-letnim doświadczeniem. Prowadzenie ksiąg rachunkowych, doradztwo gospodarcze oraz kompleksowe usługi budowlane wykończeniowe.",
+    "Biuro rachunkowe z ponad 25-letnim doświadczeniem. Kompleksowa obsługa księgowa firm, rozliczenia podatkowe, kadry i płace oraz doradztwo gospodarcze.",
   foundedYear: 2001,
   nip: "5751290834",
   regon: "151991203",
@@ -28,8 +28,8 @@ export const NAV_LINKS = [
 export const ABOUT = {
   heading: "O firmie",
   paragraphs: [
-    `P.H.U. "DUET" to biuro rachunkowe prowadzone przez Sebastiana Zawadę, działające nieprzerwanie od 1 maja 2001 roku w Lublińcu. Specjalizujemy się w obsłudze księgowej firm — od jednoosobowych działalności po spółki.`,
-    "Oprócz księgowości oferujemy doradztwo w zakresie prowadzenia działalności gospodarczej oraz profesjonalne usługi budowlane wykończeniowe. Łączymy wiedzę finansową z praktycznym doświadczeniem, dzięki czemu nasi klienci otrzymują kompleksową obsługę w jednym miejscu.",
+    `P.H.U. "DUET" to biuro rachunkowe prowadzone przez Sebastiana Zawadę, działające nieprzerwanie od 1 maja 2001 roku w Lublińcu. Specjalizujemy się w kompleksowej obsłudze księgowej firm — od jednoosobowych działalności po spółki.`,
+    "Naszym klientom zapewniamy rzetelne prowadzenie ksiąg rachunkowych, terminowe rozliczenia z urzędem skarbowym i ZUS-em oraz bieżące doradztwo podatkowe. Śledzimy zmiany w przepisach, żeby nasi klienci mogli skupić się na prowadzeniu biznesu.",
   ],
   stats: [
     { value: "25+", label: "Lat na rynku" },
@@ -41,31 +41,31 @@ export const ABOUT = {
 export const SERVICES = {
   heading: "Nasze usługi",
   subheading:
-    "Księgowość, doradztwo i usługi budowlane — wszystko w jednym miejscu",
+    "Kompleksowa obsługa księgowa i doradztwo dla Twojej firmy",
   items: [
     {
-      title: "Księgowość i rachunkowość",
+      title: "Księgi rachunkowe i KPiR",
       description:
-        "Prowadzenie ksiąg rachunkowych, KPiR, ewidencji ryczałtowej. Rozliczenia PIT, CIT, VAT. Sporządzanie deklaracji podatkowych i sprawozdań finansowych.",
+        "Prowadzenie pełnych ksiąg rachunkowych, KPiR oraz ewidencji ryczałtowej. Sporządzanie sprawozdań finansowych i bilansów.",
       icon: "calculator",
+    },
+    {
+      title: "Rozliczenia podatkowe",
+      description:
+        "Deklaracje PIT, CIT, VAT, JPK. Rozliczenia z urzędem skarbowym i ZUS. Reprezentacja przed organami podatkowymi.",
+      icon: "file-text",
+    },
+    {
+      title: "Kadry i płace",
+      description:
+        "Prowadzenie dokumentacji kadrowej, naliczanie wynagrodzeń, rozliczenia ZUS, umowy o pracę i zlecenia, świadectwa pracy.",
+      icon: "users",
     },
     {
       title: "Doradztwo gospodarcze",
       description:
-        "Doradztwo w zakresie prowadzenia działalności gospodarczej, optymalizacji podatkowej, wyboru formy opodatkowania i zarządzania finansami firmy.",
+        "Wybór formy opodatkowania, optymalizacja podatkowa, zakładanie działalności, doradztwo w zakresie zarządzania finansami firmy.",
       icon: "lightbulb",
-    },
-    {
-      title: "Usługi budowlane wykończeniowe",
-      description:
-        "Kompleksowe wykończenia wnętrz: posadzkarstwo, malowanie, tynkowanie, instalacje elektryczne i wodno-kanalizacyjne, stolarka budowlana.",
-      icon: "wrench",
-    },
-    {
-      title: "Usługi finansowe",
-      description:
-        "Pośrednictwo finansowe, pomoc w uzyskaniu kredytów i finansowania dla firm. Doradztwo w zakresie produktów finansowych.",
-      icon: "banknote",
     },
   ],
 } as const;
@@ -79,14 +79,14 @@ export const WHY_US = {
         "Działamy od 2001 roku. Znamy polskie przepisy podatkowe od podszewki i śledzimy każdą zmianę, by nasi klienci byli zawsze na bieżąco.",
     },
     {
-      title: "Znajomość branży",
+      title: "Pełna obsługa księgowa",
       description:
-        "Obsługujemy zarówno jednoosobowe działalności, jak i większe podmioty. Każdy klient dostaje rozwiązania dopasowane do swojej specyfiki.",
+        "Księgi, podatki, kadry, ZUS — wszystko w jednym biurze. Nie musisz szukać osobnych specjalistów do każdego tematu.",
     },
     {
-      title: "Wszystko w jednym miejscu",
+      title: "Indywidualne podejście",
       description:
-        "Księgowość, doradztwo i usługi budowlane — nie musisz szukać wielu firm. Załatwiamy sprawę kompleksowo.",
+        "Każda firma jest inna. Dopasowujemy formę rozliczeń i zakres obsługi do specyfiki działalności klienta.",
     },
     {
       title: "Lubliniec i okolice",
