@@ -111,12 +111,26 @@ export const CONTACT = {
 } as const;
 
 export const TAX_NEWS = {
-  heading: "Aktualności podatkowe",
+  heading: "Podatki i przepisy dla firm",
   subheading:
-    "Najnowsze zmiany i informacje podatkowe z oficjalnych źródeł",
-  feedUrl: "https://www.gov.pl/web/finanse/wiadomosci.rss",
-  maxItems: 6,
+    "Najnowsze zmiany podatkowe, interpretacje i przepisy istotne dla księgowych i przedsiębiorców",
+  feeds: [
+    {
+      url: "https://www.infor.pl/rss/podatki.xml",
+      label: "Infor – Podatki",
+    },
+    {
+      url: "https://ksiegowosc.infor.pl/rss/rachunkowosc.xml",
+      label: "Infor – Księgowość",
+    },
+    {
+      url: "https://serwisy.gazetaprawna.pl/podatki/rss.xml",
+      label: "Gazeta Prawna – Podatki",
+    },
+  ],
+  maxItems: 9,
   readMoreLabel: "Czytaj więcej",
+  allLabel: "Wszystkie",
   emptyMessage: "Brak aktualności do wyświetlenia.",
   errorMessage:
     "Nie udało się załadować aktualności. Spróbuj ponownie później.",
