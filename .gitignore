@@ -1,4 +1,7 @@
-src-private/
 node_modules/
-build/
-.staticrypt.json
+.next/
+out/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
