@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens ─── */
+
+@theme {
+  --color-primary: #0f2b46;
+  --color-primary-light: #163d61;
+  --color-primary-dark: #091d30;
+  --color-accent: #c8a24d;
+  --color-accent-hover: #b8922d;
+  --color-surface: #f7f8fa;
+  --color-border: #e2e8f0;
+  --color-text-heading: #1a1a2e;
+  --color-text-body: #4a5568;
+  --color-text-muted: #94a3b8;
+}
+
+/* ─── Base ─── */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--color-text-body);
+}
+
+/* ─── Section spacing ─── */
+
+.section {
+  padding-block: 5rem;
+}
+
+.section-heading {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-heading);
+  margin-bottom: 1rem;
+}
+
+.section-subheading {
+  font-size: 1.125rem;
+  color: var(--color-text-muted);
+  margin-bottom: 3rem;
+}
+
+/* ─── Scroll-reveal animation ─── */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
