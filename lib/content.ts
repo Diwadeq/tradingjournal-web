@@ -5,12 +5,15 @@
 
 export const BUSINESS = {
   ownerName: "Sebastian Zawada",
-  companyName: 'PHU "DUET"',
-  fullName: 'Sebastian Zawada – PHU "DUET"',
-  tagline: "Profesjonalne usługi dla Twojego biznesu",
+  companyName: 'P.H.U. "DUET"',
+  fullName: 'Sebastian ZAWADA P.H.U. "DUET"',
+  tagline: "Biuro rachunkowe i usługi budowlane — Lubliniec",
   description:
-    "Jesteśmy firmą handlowo-usługową z wieloletnim doświadczeniem. Stawiamy na jakość, terminowość i indywidualne podejście do każdego klienta.",
-  foundedYear: 2010,
+    "Biuro rachunkowe z ponad 25-letnim doświadczeniem. Prowadzenie ksiąg rachunkowych, doradztwo gospodarcze oraz kompleksowe usługi budowlane wykończeniowe.",
+  foundedYear: 2001,
+  nip: "5751290834",
+  regon: "151991203",
+  legalForm: "Indywidualna działalność gospodarcza",
 } as const;
 
 export const NAV_LINKS = [
@@ -25,43 +28,44 @@ export const NAV_LINKS = [
 export const ABOUT = {
   heading: "O firmie",
   paragraphs: [
-    `PHU "DUET" to firma handlowo-usługowa prowadzona przez Sebastiana Zawadę. Od lat działamy na rynku, dostarczając naszym klientom usługi na najwyższym poziomie.`,
-    "Naszą misją jest budowanie długotrwałych relacji biznesowych opartych na zaufaniu, jakości i profesjonalizmie. Każde zlecenie traktujemy indywidualnie, dopasowując rozwiązania do potrzeb klienta.",
+    `P.H.U. "DUET" to biuro rachunkowe prowadzone przez Sebastiana Zawadę, działające nieprzerwanie od 1 maja 2001 roku w Lublińcu. Specjalizujemy się w obsłudze księgowej firm — od jednoosobowych działalności po spółki.`,
+    "Oprócz księgowości oferujemy doradztwo w zakresie prowadzenia działalności gospodarczej oraz profesjonalne usługi budowlane wykończeniowe. Łączymy wiedzę finansową z praktycznym doświadczeniem, dzięki czemu nasi klienci otrzymują kompleksową obsługę w jednym miejscu.",
   ],
   stats: [
-    { value: "14+", label: "Lat doświadczenia" },
-    { value: "500+", label: "Zadowolonych klientów" },
+    { value: "25+", label: "Lat na rynku" },
+    { value: "Od 2001", label: "Rok założenia" },
     { value: "100%", label: "Zaangażowania" },
   ],
 } as const;
 
 export const SERVICES = {
   heading: "Nasze usługi",
-  subheading: "Oferujemy szeroki zakres usług dopasowanych do Twoich potrzeb",
+  subheading:
+    "Księgowość, doradztwo i usługi budowlane — wszystko w jednym miejscu",
   items: [
     {
-      title: "Handel",
+      title: "Księgowość i rachunkowość",
       description:
-        "Kompleksowa obsługa handlowa — dostarczamy produkty i materiały najwyższej jakości w konkurencyjnych cenach.",
-      icon: "shopping-bag",
+        "Prowadzenie ksiąg rachunkowych, KPiR, ewidencji ryczałtowej. Rozliczenia PIT, CIT, VAT. Sporządzanie deklaracji podatkowych i sprawozdań finansowych.",
+      icon: "calculator",
     },
     {
-      title: "Usługi remontowe",
+      title: "Doradztwo gospodarcze",
       description:
-        "Profesjonalne usługi remontowo-budowlane dla klientów indywidualnych i firm. Realizujemy projekty od A do Z.",
+        "Doradztwo w zakresie prowadzenia działalności gospodarczej, optymalizacji podatkowej, wyboru formy opodatkowania i zarządzania finansami firmy.",
+      icon: "lightbulb",
+    },
+    {
+      title: "Usługi budowlane wykończeniowe",
+      description:
+        "Kompleksowe wykończenia wnętrz: posadzkarstwo, malowanie, tynkowanie, instalacje elektryczne i wodno-kanalizacyjne, stolarka budowlana.",
       icon: "wrench",
     },
     {
-      title: "Transport",
+      title: "Usługi finansowe",
       description:
-        "Szybki i bezpieczny transport towarów. Dysponujemy nowoczesnym taborem dostosowanym do różnych potrzeb.",
-      icon: "truck",
-    },
-    {
-      title: "Doradztwo",
-      description:
-        "Fachowe doradztwo w zakresie doboru materiałów i planowania projektów. Pomagamy podejmować najlepsze decyzje.",
-      icon: "lightbulb",
+        "Pośrednictwo finansowe, pomoc w uzyskaniu kredytów i finansowania dla firm. Doradztwo w zakresie produktów finansowych.",
+      icon: "banknote",
     },
   ],
 } as const;
@@ -70,24 +74,24 @@ export const WHY_US = {
   heading: "Dlaczego my?",
   items: [
     {
-      title: "Doświadczenie",
+      title: "25 lat doświadczenia",
       description:
-        "Wieloletnia obecność na rynku gwarantuje sprawdzone rozwiązania i znajomość branży.",
+        "Działamy od 2001 roku. Znamy polskie przepisy podatkowe od podszewki i śledzimy każdą zmianę, by nasi klienci byli zawsze na bieżąco.",
     },
     {
-      title: "Terminowość",
+      title: "Znajomość branży",
       description:
-        "Dotrzymujemy ustalonych terminów. Czas naszych klientów jest dla nas priorytetem.",
+        "Obsługujemy zarówno jednoosobowe działalności, jak i większe podmioty. Każdy klient dostaje rozwiązania dopasowane do swojej specyfiki.",
     },
     {
-      title: "Konkurencyjne ceny",
+      title: "Wszystko w jednym miejscu",
       description:
-        "Oferujemy atrakcyjne warunki cenowe bez kompromisów w kwestii jakości.",
+        "Księgowość, doradztwo i usługi budowlane — nie musisz szukać wielu firm. Załatwiamy sprawę kompleksowo.",
     },
     {
-      title: "Indywidualne podejście",
+      title: "Lubliniec i okolice",
       description:
-        "Każdy klient jest dla nas wyjątkowy. Dopasowujemy ofertę do konkretnych potrzeb.",
+        "Jesteśmy lokalni. Znamy realia prowadzenia firmy w regionie i jesteśmy dostępni na miejscu, kiedy trzeba.",
     },
   ],
 } as const;
@@ -95,13 +99,15 @@ export const WHY_US = {
 export const CONTACT = {
   heading: "Kontakt",
   subheading: "Skontaktuj się z nami — chętnie odpowiemy na Twoje pytania",
-  phone: "+48 123 456 789",
+  phone: "+48 XXX XXX XXX",
   email: "kontakt@phu-duet.pl",
   address: {
-    street: "ul. Przykładowa 10",
-    city: "00-000 Warszawa",
+    street: "ul. Oleska 34",
+    city: "42-700 Lubliniec",
     country: "Polska",
   },
+  nip: "NIP: 575 129 08 34",
+  regon: "REGON: 151991203",
   formLabels: {
     name: "Imię i nazwisko",
     email: "Adres e-mail",

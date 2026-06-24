@@ -40,6 +40,12 @@ export function Footer() {
             <li>
               {CONTACT.address.street}, {CONTACT.address.city}
             </li>
+            <li className="pt-2 text-white/40">
+              {CONTACT.nip}
+            </li>
+            <li className="text-white/40">
+              {CONTACT.regon}
+            </li>
           </ul>
         </div>
       </div>

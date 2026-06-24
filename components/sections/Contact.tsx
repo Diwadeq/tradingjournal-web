@@ -13,7 +13,7 @@ export function Contact() {
 
         <div className="grid gap-12 lg:grid-cols-2">
           {/* Contact info */}
-          <div className="space-y-6">
+          <div className="space-y-5">
             <ContactDetail
               label="Telefon"
               value={CONTACT.phone}
@@ -28,6 +28,10 @@ export function Contact() {
               label="Adres"
               value={`${CONTACT.address.street}, ${CONTACT.address.city}`}
             />
+            <div className="grid grid-cols-2 gap-4">
+              <ContactDetail label="NIP" value={CONTACT.nip} />
+              <ContactDetail label="REGON" value={CONTACT.regon} />
+            </div>
           </div>
 
           {/* Contact form */}
