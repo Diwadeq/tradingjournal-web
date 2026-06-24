@@ -18,6 +18,7 @@ export const NAV_LINKS = [
   { label: "O firmie", href: "#about" },
   { label: "Usługi", href: "#services" },
   { label: "Dlaczego my", href: "#why-us" },
+  { label: "Aktualności", href: "#tax-news" },
   { label: "Kontakt", href: "#contact" },
 ] as const;
 
@@ -107,6 +108,19 @@ export const CONTACT = {
     message: "Wiadomość",
     submit: "Wyślij wiadomość",
   },
+} as const;
+
+export const TAX_NEWS = {
+  heading: "Aktualności podatkowe",
+  subheading:
+    "Najnowsze zmiany i informacje podatkowe z oficjalnych źródeł",
+  feedUrl: "https://www.gov.pl/web/finanse/wiadomosci.rss",
+  maxItems: 6,
+  readMoreLabel: "Czytaj więcej",
+  emptyMessage: "Brak aktualności do wyświetlenia.",
+  errorMessage:
+    "Nie udało się załadować aktualności. Spróbuj ponownie później.",
+  retryLabel: "Spróbuj ponownie",
 } as const;
 
 export const FOOTER = {
