@@ -1,4 +1,4 @@
-//@version=5
+//@version=6
 indicator("TJR Trades Indicator", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // ============================================================================
@@ -388,11 +388,8 @@ if show_sweeps
 in_kz_london = not na(time(timeframe.period, kz_london_open, sess_tz))
 in_kz_ny     = not na(time(timeframe.period, kz_ny_open, sess_tz))
 
-if show_killzones
-    if in_kz_london
-        bgcolor(color.new(#00d4ff, 94))
-    if in_kz_ny
-        bgcolor(color.new(#00e676, 94))
+kz_bg = show_killzones and in_kz_london ? color.new(#00d4ff, 94) : show_killzones and in_kz_ny ? color.new(#00e676, 94) : na
+bgcolor(kz_bg)
 
 // ============================================================================
 // DAILY BIAS TABLE
