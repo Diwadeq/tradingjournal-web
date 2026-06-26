@@ -419,95 +419,106 @@ if bearBOS
         label.new(bar_index, swingLow, 'BOS', style = label.style_label_up, color = color.new(bearCol, 20), textcolor = color.white, size = size.tiny)
 
 // =========================================================================
-// 7. CURRENT TIMEFRAME BIAS (structure + FVG + sweeps + BOS + displacement)
+// 7. HTF BIAS — 1H / 4H / Daily (only updates on candle close)
 // =========================================================================
 
-bp_ph = ta.pivothigh(high, biasPivot, biasPivot)
-bp_pl = ta.pivotlow(low, biasPivot, biasPivot)
+// Bias calculation runs inside request.security so it uses confirmed HTF candles only.
+// Each TF gets: structure (HH/HL/LH/LL), BOS, FVG respect/disrespect, sweeps, displacement.
 
-var float bp_sh1 = na, var float bp_sh0 = na
-var float bp_sl1 = na, var float bp_sl0 = na
+calc_htf_bias(simple int pvt) =>
+    // Swings
+    _ph = ta.pivothigh(high, pvt, pvt)
+    _pl = ta.pivotlow(low, pvt, pvt)
 
-if not na(bp_ph)
-    bp_sh1 := bp_sh0
-    bp_sh0 := bp_ph
-if not na(bp_pl)
-    bp_sl1 := bp_sl0
-    bp_sl0 := bp_pl
+    var float _sh1 = na, var float _sh0 = na
+    var float _sl1 = na, var float _sl0 = na
 
-// Structure score: HH/HL vs LH/LL
-bp_hh = not na(bp_sh0) and not na(bp_sh1) and bp_sh0 > bp_sh1
-bp_hl = not na(bp_sl0) and not na(bp_sl1) and bp_sl0 > bp_sl1
-bp_lh = not na(bp_sh0) and not na(bp_sh1) and bp_sh0 < bp_sh1
-bp_ll = not na(bp_sl0) and not na(bp_sl1) and bp_sl0 < bp_sl1
+    if not na(_ph)
+        _sh1 := _sh0
+        _sh0 := _ph
+    if not na(_pl)
+        _sl1 := _sl0
+        _sl0 := _pl
 
-bp_struct = (bp_hh ? 1.0 : bp_lh ? -1.0 : 0.0) + (bp_hl ? 1.0 : bp_ll ? -1.0 : 0.0)
+    // Structure
+    _hh = not na(_sh0) and not na(_sh1) and _sh0 > _sh1
+    _hl = not na(_sl0) and not na(_sl1) and _sl0 > _sl1
+    _lh = not na(_sh0) and not na(_sh1) and _sh0 < _sh1
+    _ll = not na(_sl0) and not na(_sl1) and _sl0 < _sl1
+    _struct = (_hh ? 1.0 : _lh ? -1.0 : 0.0) + (_hl ? 1.0 : _ll ? -1.0 : 0.0)
 
-// Structure label for dashboard
-bp_struct_str = bp_hh and bp_hl ? 'HH + HL' : bp_hh ? 'HH' : bp_hl ? 'HL' : bp_lh and bp_ll ? 'LH + LL' : bp_lh ? 'LH' : bp_ll ? 'LL' : 'Ranging'
-bp_struct_dir = bp_struct > 0 ? 'Bullish' : bp_struct < 0 ? 'Bearish' : 'None'
+    // BOS
+    var int _bos = 0
+    if not na(_sh0) and close > _sh0 and close[1] <= _sh0
+        _bos := 1
+    if not na(_sl0) and close < _sl0 and close[1] >= _sl0
+        _bos := -1
 
-// BOS score
-var int bp_bos = 0
-if not na(bp_sh0) and close > bp_sh0 and close[1] <= bp_sh0
-    bp_bos := 1
-if not na(bp_sl0) and close < bp_sl0 and close[1] >= bp_sl0
-    bp_bos := -1
+    // FVG respect / disrespect
+    _bull_fvg = low > high[2] and close[1] > open[1]
+    _bear_fvg = high < low[2] and close[1] < open[1]
 
-// FVG respect/disrespect on current TF
-var float bp_bfvg_top = na, var float bp_bfvg_bot = na
-var float bp_sfvg_top = na, var float bp_sfvg_bot = na
+    var float _bf_top = na, var float _bf_bot = na
+    var float _sf_top = na, var float _sf_bot = na
 
-bp_bull_fvg = low > high[2] and close[1] > open[1]
-bp_bear_fvg = high < low[2] and close[1] < open[1]
+    if _bull_fvg
+        _bf_top := low
+        _bf_bot := high[2]
+    if _bear_fvg
+        _sf_top := low[2]
+        _sf_bot := high
 
-if bp_bull_fvg
-    bp_bfvg_top := low
-    bp_bfvg_bot := high[2]
-if bp_bear_fvg
-    bp_sfvg_top := low[2]
-    bp_sfvg_bot := high
+    _bf_resp = not na(_bf_bot) and low <= _bf_top and close > _bf_bot
+    _bf_dis  = not na(_bf_bot) and close < _bf_bot
+    _sf_resp = not na(_sf_top) and high >= _sf_bot and close < _sf_top
+    _sf_dis  = not na(_sf_top) and close > _sf_top
 
-bp_bfvg_resp = not na(bp_bfvg_bot) and low <= bp_bfvg_top and close > bp_bfvg_bot
-bp_bfvg_dis  = not na(bp_bfvg_bot) and close < bp_bfvg_bot
-bp_sfvg_resp = not na(bp_sfvg_top) and high >= bp_sfvg_bot and close < bp_sfvg_top
-bp_sfvg_dis  = not na(bp_sfvg_top) and close > bp_sfvg_top
+    if _bf_dis
+        _bf_top := na
+        _bf_bot := na
+    if _sf_dis
+        _sf_top := na
+        _sf_bot := na
 
-if bp_bfvg_dis
-    bp_bfvg_top := na
-    bp_bfvg_bot := na
-if bp_sfvg_dis
-    bp_sfvg_top := na
-    bp_sfvg_bot := na
+    _fvg_s = (_bf_resp ? 1.5 : _bf_dis ? -1.5 : 0.0) + (_sf_resp ? -1.5 : _sf_dis ? 1.5 : 0.0)
 
-bp_fvg_score = (bp_bfvg_resp ? 1.5 : bp_bfvg_dis ? -1.5 : 0.0) + (bp_sfvg_resp ? -1.5 : bp_sfvg_dis ? 1.5 : 0.0)
-bp_fvg_str = bp_bfvg_resp ? 'Respected' : bp_sfvg_resp ? 'Respected' : bp_bfvg_dis ? 'Disrespected' : bp_sfvg_dis ? 'Disrespected' : '–'
-bp_fvg_dir = bp_bfvg_resp ? 'Bullish' : bp_sfvg_resp ? 'Bearish' : bp_bfvg_dis ? 'Bearish' : bp_sfvg_dis ? 'Bullish' : 'None'
+    // Sweeps
+    var int _sw = 0
+    if not na(_sl0) and low < _sl0 and close > _sl0
+        _sw := 1
+    if not na(_sh0) and high > _sh0 and close < _sh0
+        _sw := -1
 
-// Liquidity sweep score
-var int bp_sweep = 0
-if not na(bp_sl0) and low < bp_sl0 and close > bp_sl0
-    bp_sweep := 1
-if not na(bp_sh0) and high > bp_sh0 and close < bp_sh0
-    bp_sweep := -1
+    // Displacement
+    _body = math.abs(close - open)
+    _rng  = high - low
+    _disp = _rng > 0 ? _body / _rng : 0.0
+    _ds   = _disp > 0.7 ? (close > open ? 0.5 : -0.5) : 0.0
 
-bp_sweep_str = bp_sweep == 1 ? 'SSL Swept' : bp_sweep == -1 ? 'BSL Swept' : '–'
-bp_sweep_dir = bp_sweep == 1 ? 'Bullish' : bp_sweep == -1 ? 'Bearish' : 'None'
+    // Composite
+    _total = _struct + _bos * 2.0 + _fvg_s + _sw * 1.5 + _ds
+    _bias  = _total > 0.5 ? 1 : _total < -0.5 ? -1 : 0
 
-// Displacement
-bp_body = math.abs(close - open)
-bp_range = high - low
-bp_disp = bp_range > 0 ? bp_body / bp_range : 0.0
-bp_disp_score = bp_disp > 0.7 ? (close > open ? 0.5 : -0.5) : 0.0
+    [_bias, _struct, _bos, _fvg_s > 0 ? 1 : _fvg_s < 0 ? -1 : 0, _sw]
 
-// Composite bias
-bp_total = bp_struct + bp_bos * 2.0 + bp_fvg_score + bp_sweep * 1.5 + bp_disp_score
-bp_bias = bp_total > 0.5 ? 1 : bp_total < -0.5 ? -1 : 0
-bp_bias_str = bp_bias == 1 ? 'BULLISH' : bp_bias == -1 ? 'BEARISH' : 'NEUTRAL'
-bp_bias_dir = bp_bias == 1 ? 'Bullish' : bp_bias == -1 ? 'Bearish' : 'None'
+// Request each HTF — barmerge.lookahead_off + barstate.isconfirmed equivalent:
+// request.security uses confirmed bars by default (no lookahead), so bias only
+// updates when the HTF candle closes.
+[h1_bias, h1_struct, h1_bos, h1_fvg, h1_sweep]  = request.security(syminfo.tickerid, '60',  calc_htf_bias(biasPivot))
+[h4_bias, h4_struct, h4_bos, h4_fvg, h4_sweep]   = request.security(syminfo.tickerid, '240', calc_htf_bias(biasPivot))
+[d_bias, d_struct, d_bos, d_fvg, d_sweep]         = request.security(syminfo.tickerid, 'D',   calc_htf_bias(biasPivot))
 
-bp_bos_str = bp_bos == 1 ? 'Bull BOS' : bp_bos == -1 ? 'Bear BOS' : '–'
-bp_bos_dir = bp_bos == 1 ? 'Bullish' : bp_bos == -1 ? 'Bearish' : 'None'
+// String helpers for the bias panel
+f_bias_str(int b) => b == 1 ? 'BULLISH' : b == -1 ? 'BEARISH' : 'NEUTRAL'
+f_bias_dir(int b) => b == 1 ? 'Bullish' : b == -1 ? 'Bearish' : 'None'
+f_struct_str(float s) => s > 1.5 ? 'HH + HL' : s > 0 ? 'HH or HL' : s < -1.5 ? 'LH + LL' : s < 0 ? 'LH or LL' : 'Ranging'
+f_bos_str(int b) => b == 1 ? 'Bull BOS' : b == -1 ? 'Bear BOS' : '–'
+f_fvg_str(int f) => f == 1 ? 'Respected' : f == -1 ? 'Disrespected' : '–'
+f_sweep_str(int s) => s == 1 ? 'SSL Swept' : s == -1 ? 'BSL Swept' : '–'
+
+// For confluence dashboard row
+bp_bias_str = f_bias_str(h1_bias)
+bp_bias_dir = f_bias_dir(h1_bias)
 
 // =========================================================================
 // 8. CONFLUENCE DASHBOARD (Top) + BIAS PANEL (Bottom)
@@ -547,39 +558,45 @@ if showDash and barstate.islast
         table.cell(dash, 1, r, bp_bias_str, text_color = color.white, text_size = size.small, bgcolor = color.new(biasCol(bp_bias_dir), 20))
         r += 1
 
-// --- Bias Detail Panel (bottom) ---
+// --- Bias Detail Panel (bottom) – 1H / 4H / Daily ---
 biasBottomPos = dashPos == position.top_right ? position.bottom_right : dashPos == position.top_left ? position.bottom_left : dashPos == position.bottom_right ? position.bottom_left : position.bottom_right
 
-var table biasTbl = table.new(biasBottomPos, 3, 6, border_width = 1, frame_color = color.new(color.gray, 50), frame_width = 1)
+var table biasTbl = table.new(biasBottomPos, 6, 4, border_width = 1, frame_color = color.new(color.gray, 50), frame_width = 1)
+
+biasRowCol(int b) => b == 1 ? biasBullClr : b == -1 ? biasBearClr : biasNeutClr
 
 if showBias and barstate.islast
-    table.cell(biasTbl, 0, 0, timeframe.period + ' BIAS', text_color = #ffd700, text_size = size.normal, bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 1, 0, bp_bias_str, text_color = biasCol(bp_bias_dir), text_size = size.normal, bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 2, 0, '', bgcolor = color.new(color.black, 0))
+    // Header row
+    table.cell(biasTbl, 0, 0, 'TF',        text_color = #ffd700,      text_size = size.small, bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 1, 0, 'Bias',       text_color = #ffd700,      text_size = size.small, bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 2, 0, 'Structure',  text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 3, 0, 'BOS',        text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 4, 0, 'FVG',        text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 5, 0, 'Sweep',      text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
 
-    table.cell(biasTbl, 0, 1, 'Factor', text_color = color.silver, text_size = size.tiny, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 1, 'Status', text_color = color.silver, text_size = size.tiny, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 2, 1, 'Signal', text_color = color.silver, text_size = size.tiny, bgcolor = color.new(color.black, 20))
+    // 1H row
+    table.cell(biasTbl, 0, 1, '1H',                text_color = color.white,  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 1, 1, f_bias_str(h1_bias),  text_color = biasRowCol(h1_bias),  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 2, 1, f_struct_str(h1_struct), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_struct > 0 ? 1 : h1_struct < 0 ? -1 : 0), 40))
+    table.cell(biasTbl, 3, 1, f_bos_str(h1_bos),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_bos), 40))
+    table.cell(biasTbl, 4, 1, f_fvg_str(h1_fvg),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_fvg), 40))
+    table.cell(biasTbl, 5, 1, f_sweep_str(h1_sweep), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_sweep), 40))
 
-    // Structure
-    table.cell(biasTbl, 0, 2, 'Structure', text_color = color.silver, text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 2, bp_struct_str, text_color = color.white, text_size = size.small, bgcolor = color.new(biasCol(bp_struct_dir), 20))
-    table.cell(biasTbl, 2, 2, bp_struct_dir == 'None' ? '–' : bp_struct_dir, text_color = biasCol(bp_struct_dir), text_size = size.small, bgcolor = color.new(color.black, 20))
+    // 4H row
+    table.cell(biasTbl, 0, 2, '4H',                text_color = color.white,  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 1, 2, f_bias_str(h4_bias),  text_color = biasRowCol(h4_bias),  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 2, 2, f_struct_str(h4_struct), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_struct > 0 ? 1 : h4_struct < 0 ? -1 : 0), 40))
+    table.cell(biasTbl, 3, 2, f_bos_str(h4_bos),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_bos), 40))
+    table.cell(biasTbl, 4, 2, f_fvg_str(h4_fvg),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_fvg), 40))
+    table.cell(biasTbl, 5, 2, f_sweep_str(h4_sweep), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_sweep), 40))
 
-    // BOS
-    table.cell(biasTbl, 0, 3, 'BOS', text_color = color.silver, text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 3, bp_bos_str, text_color = color.white, text_size = size.small, bgcolor = color.new(biasCol(bp_bos_dir), 20))
-    table.cell(biasTbl, 2, 3, bp_bos_dir == 'None' ? '–' : bp_bos_dir, text_color = biasCol(bp_bos_dir), text_size = size.small, bgcolor = color.new(color.black, 20))
-
-    // FVG
-    table.cell(biasTbl, 0, 4, 'FVG', text_color = color.silver, text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 4, bp_fvg_str, text_color = color.white, text_size = size.small, bgcolor = color.new(biasCol(bp_fvg_dir), 20))
-    table.cell(biasTbl, 2, 4, bp_fvg_dir == 'None' ? '–' : bp_fvg_dir, text_color = biasCol(bp_fvg_dir), text_size = size.small, bgcolor = color.new(color.black, 20))
-
-    // Sweep
-    table.cell(biasTbl, 0, 5, 'Sweep', text_color = color.silver, text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 5, bp_sweep_str, text_color = color.white, text_size = size.small, bgcolor = color.new(biasCol(bp_sweep_dir), 20))
-    table.cell(biasTbl, 2, 5, bp_sweep_dir == 'None' ? '–' : bp_sweep_dir, text_color = biasCol(bp_sweep_dir), text_size = size.small, bgcolor = color.new(color.black, 20))
+    // Daily row
+    table.cell(biasTbl, 0, 3, '1D',                text_color = color.white,  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 1, 3, f_bias_str(d_bias),   text_color = biasRowCol(d_bias),   text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 2, 3, f_struct_str(d_struct),  text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_struct > 0 ? 1 : d_struct < 0 ? -1 : 0), 40))
+    table.cell(biasTbl, 3, 3, f_bos_str(d_bos),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_bos), 40))
+    table.cell(biasTbl, 4, 3, f_fvg_str(d_fvg),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_fvg), 40))
+    table.cell(biasTbl, 5, 3, f_sweep_str(d_sweep),  text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_sweep), 40))
 
 // =========================================================================
 // 9. ALERTS
