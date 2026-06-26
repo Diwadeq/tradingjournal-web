@@ -1,5 +1,5 @@
 //@version=6
-indicator("TJR Bias Indicator", overlay=true)
+indicator("TJR Bias Indicator", overlay=true, max_boxes_count=200, max_labels_count=200)
 
 // ============================================================================
 // INPUTS
@@ -7,24 +7,132 @@ indicator("TJR Bias Indicator", overlay=true)
 
 grp = "Settings"
 bias_pos    = input.string("Top Right", "Table Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp)
+pivot_len   = input.int(5, "Pivot Length", minval=2, maxval=20, group=grp)
 bull_color  = input.color(#00e676, "Bullish Color", group=grp)
 bear_color  = input.color(#ff3d57, "Bearish Color", group=grp)
 neutral_clr = input.color(#a0a0b8, "Neutral Color", group=grp)
+show_fvg    = input.bool(true, "Show FVGs on Chart", group=grp)
 
 // ============================================================================
-// BIAS CALCULATION
+// BIAS FUNCTION — Structure + FVG Respect/Disrespect
 // ============================================================================
 
-[d_open, d_close] = request.security(syminfo.tickerid, "D", [open, close])
-[h4_open, h4_close] = request.security(syminfo.tickerid, "240", [open, close])
-[h1_open, h1_close] = request.security(syminfo.tickerid, "60", [open, close])
+// Returns [bias, fvg_status]
+// bias: 1 = bullish, -1 = bearish, 0 = neutral
+// fvg_status: 1 = respected, -1 = disrespected, 0 = no data
+calc_bias(tf) =>
+    // --- Market Structure ---
+    tf_high  = request.security(syminfo.tickerid, tf, high)
+    tf_low   = request.security(syminfo.tickerid, tf, low)
+    tf_close = request.security(syminfo.tickerid, tf, close)
+    tf_open  = request.security(syminfo.tickerid, tf, open)
 
-d_bias  = d_close > d_open ? "BULLISH" : d_close < d_open ? "BEARISH" : "NEUTRAL"
-h4_bias = h4_close > h4_open ? "BULLISH" : h4_close < h4_open ? "BEARISH" : "NEUTRAL"
-h1_bias = h1_close > h1_open ? "BULLISH" : h1_close < h1_open ? "BEARISH" : "NEUTRAL"
+    tf_ph = request.security(syminfo.tickerid, tf, ta.pivothigh(high, pivot_len, pivot_len))
+    tf_pl = request.security(syminfo.tickerid, tf, ta.pivotlow(low, pivot_len, pivot_len))
 
-f_clr(bias) =>
-    bias == "BULLISH" ? bull_color : bias == "BEARISH" ? bear_color : neutral_clr
+    // Track last two swing highs and lows for HH/HL or LH/LL
+    var float sh1 = na, var float sh0 = na
+    var float sl1 = na, var float sl0 = na
+
+    if not na(tf_ph)
+        sh1 := sh0
+        sh0 := tf_ph
+    if not na(tf_pl)
+        sl1 := sl0
+        sl0 := tf_pl
+
+    hh = not na(sh0) and not na(sh1) and sh0 > sh1
+    hl = not na(sl0) and not na(sl1) and sl0 > sl1
+    lh = not na(sh0) and not na(sh1) and sh0 < sh1
+    ll = not na(sl0) and not na(sl1) and sl0 < sl1
+
+    struct_bull = hh and hl ? 2 : hh or hl ? 1 : 0
+    struct_bear = ll and lh ? 2 : ll or lh ? 1 : 0
+
+    // --- FVG Detection & Respect/Disrespect ---
+    tf_h0 = request.security(syminfo.tickerid, tf, high)
+    tf_h2 = request.security(syminfo.tickerid, tf, high[2])
+    tf_l0 = request.security(syminfo.tickerid, tf, low)
+    tf_l2 = request.security(syminfo.tickerid, tf, low[2])
+    tf_c1 = request.security(syminfo.tickerid, tf, close[1])
+    tf_o1 = request.security(syminfo.tickerid, tf, open[1])
+
+    bull_fvg = tf_l0 > tf_h2 and tf_c1 > tf_o1
+    bear_fvg = tf_h0 < tf_l2 and tf_c1 < tf_o1
+
+    var float last_bull_fvg_top = na
+    var float last_bull_fvg_bot = na
+    var float last_bear_fvg_top = na
+    var float last_bear_fvg_bot = na
+
+    if bull_fvg
+        last_bull_fvg_top := tf_l0
+        last_bull_fvg_bot := tf_h2
+    if bear_fvg
+        last_bear_fvg_top := tf_l2
+        last_bear_fvg_bot := tf_h0
+
+    // Respect = price taps FVG zone and closes inside/away from it
+    // Disrespect = price closes clean through the FVG
+    bull_fvg_respected = not na(last_bull_fvg_bot) and tf_l0 <= last_bull_fvg_top and tf_close > last_bull_fvg_bot
+    bull_fvg_disrespected = not na(last_bull_fvg_bot) and tf_close < last_bull_fvg_bot
+
+    bear_fvg_respected = not na(last_bear_fvg_top) and tf_h0 >= last_bear_fvg_bot and tf_close < last_bear_fvg_top
+    bear_fvg_disrespected = not na(last_bear_fvg_top) and tf_close > last_bear_fvg_top
+
+    // Clear disrespected FVGs
+    if bull_fvg_disrespected
+        last_bull_fvg_top := na
+        last_bull_fvg_bot := na
+    if bear_fvg_disrespected
+        last_bear_fvg_top := na
+        last_bear_fvg_bot := na
+
+    // --- Composite Score ---
+    score = 0.0
+    score += struct_bull - struct_bear
+
+    if bull_fvg_respected
+        score += 1.5
+    if bull_fvg_disrespected
+        score -= 1.5
+    if bear_fvg_respected
+        score -= 1.5
+    if bear_fvg_disrespected
+        score += 1.5
+
+    // Displacement (strong candle body relative to range)
+    body = math.abs(tf_close - tf_open)
+    range_val = tf_high - tf_low
+    displacement = range_val > 0 ? body / range_val : 0
+    if displacement > 0.7
+        score += tf_close > tf_open ? 0.5 : -0.5
+
+    final_bias = score > 0.5 ? 1 : score < -0.5 ? -1 : 0
+    fvg_stat = bull_fvg_respected ? 1 : bear_fvg_respected ? -1 : bull_fvg_disrespected ? -2 : bear_fvg_disrespected ? 2 : 0
+
+    [final_bias, fvg_stat]
+
+// ============================================================================
+// CALCULATE EACH TIMEFRAME
+// ============================================================================
+
+[d_bias, d_fvg]   = calc_bias("D")
+[h4_bias, h4_fvg] = calc_bias("240")
+[h1_bias, h1_fvg] = calc_bias("60")
+
+// ============================================================================
+// CURRENT TF FVG VISUALIZATION
+// ============================================================================
+
+if show_fvg
+    bull_fvg_now = low > high[2] and close[1] > open[1]
+    bear_fvg_now = high < low[2] and close[1] < open[1]
+
+    if bull_fvg_now
+        box.new(bar_index - 1, low, bar_index + 15, high[2], bgcolor=color.new(bull_color, 85), border_color=color.new(bull_color, 60), border_width=1)
+    if bear_fvg_now
+        box.new(bar_index - 1, low[2], bar_index + 15, high, bgcolor=color.new(bear_color, 85), border_color=color.new(bear_color, 60), border_width=1)
 
 // ============================================================================
 // TABLE
@@ -37,17 +145,40 @@ pos = switch bias_pos
     "Bottom Left"  => position.bottom_left
     => position.top_right
 
-var table tbl = table.new(pos, 2, 4, bgcolor=color.new(#16161f, 0), border_color=color.new(#2a2a3a, 0), border_width=1, frame_color=color.new(#2a2a3a, 0), frame_width=2)
+f_bias_str(b) => b == 1 ? "BULLISH" : b == -1 ? "BEARISH" : "NEUTRAL"
+f_clr(b)      => b == 1 ? bull_color : b == -1 ? bear_color : neutral_clr
+f_fvg_str(f)  => f == 1 ? "FVG Respected" : f == -1 ? "FVG Respected" : f == 2 ? "FVG Disrespected" : f == -2 ? "FVG Disrespected" : "—"
+f_fvg_clr(f)  => f == 1 ? bull_color : f == -1 ? bear_color : f == 2 ? bull_color : f == -2 ? bear_color : neutral_clr
+
+var table tbl = table.new(pos, 3, 5, bgcolor=color.new(#16161f, 0), border_color=color.new(#2a2a3a, 0), border_width=1, frame_color=color.new(#2a2a3a, 0), frame_width=2)
 
 if barstate.islast
-    table.cell(tbl, 0, 0, "Timeframe", text_color=#a0a0b8, text_size=size.normal, bgcolor=color.new(#111118, 0))
+    // Header
+    table.cell(tbl, 0, 0, "TF", text_color=#a0a0b8, text_size=size.normal, bgcolor=color.new(#111118, 0))
     table.cell(tbl, 1, 0, "Bias", text_color=#a0a0b8, text_size=size.normal, bgcolor=color.new(#111118, 0))
+    table.cell(tbl, 2, 0, "FVG", text_color=#a0a0b8, text_size=size.normal, bgcolor=color.new(#111118, 0))
 
+    // Daily
     table.cell(tbl, 0, 1, "Daily", text_color=#ffffff, text_size=size.normal, bgcolor=color.new(#16161f, 0))
-    table.cell(tbl, 1, 1, d_bias, text_color=f_clr(d_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 1, 1, f_bias_str(d_bias), text_color=f_clr(d_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 2, 1, f_fvg_str(d_fvg), text_color=f_fvg_clr(d_fvg), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
 
+    // 4H
     table.cell(tbl, 0, 2, "4H", text_color=#ffffff, text_size=size.normal, bgcolor=color.new(#16161f, 0))
-    table.cell(tbl, 1, 2, h4_bias, text_color=f_clr(h4_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 1, 2, f_bias_str(h4_bias), text_color=f_clr(h4_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 2, 2, f_fvg_str(h4_fvg), text_color=f_fvg_clr(h4_fvg), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
 
+    // 1H
     table.cell(tbl, 0, 3, "1H", text_color=#ffffff, text_size=size.normal, bgcolor=color.new(#16161f, 0))
-    table.cell(tbl, 1, 3, h1_bias, text_color=f_clr(h1_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 1, 3, f_bias_str(h1_bias), text_color=f_clr(h1_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 2, 3, f_fvg_str(h1_fvg), text_color=f_fvg_clr(h1_fvg), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
+
+    // Alignment row
+    all_bull = d_bias == 1 and h4_bias == 1 and h1_bias == 1
+    all_bear = d_bias == -1 and h4_bias == -1 and h1_bias == -1
+    align_str = all_bull ? "ALL ALIGNED BULLISH" : all_bear ? "ALL ALIGNED BEARISH" : "MIXED"
+    align_clr = all_bull ? bull_color : all_bear ? bear_color : #ffd700
+
+    table.cell(tbl, 0, 4, "", bgcolor=color.new(#111118, 0))
+    table.cell(tbl, 1, 4, align_str, text_color=align_clr, text_size=size.tiny, bgcolor=color.new(#111118, 0))
+    table.cell(tbl, 2, 4, "", bgcolor=color.new(#111118, 0))
