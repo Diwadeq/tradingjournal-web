@@ -1,495 +1,53 @@
 //@version=6
-indicator("TJR Trades Indicator", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+indicator("TJR Bias Indicator", overlay=true)
 
 // ============================================================================
 // INPUTS
 // ============================================================================
 
-// Session Settings
-grp_sess = "Sessions"
-show_asia     = input.bool(true, "Show Asia Session", group=grp_sess)
-show_london   = input.bool(true, "Show London Session", group=grp_sess)
-show_ny       = input.bool(true, "Show New York Session", group=grp_sess)
-asia_start    = input.session("2000-0000", "Asia Session", group=grp_sess)
-london_start  = input.session("0200-0500", "London Session", group=grp_sess)
-ny_start      = input.session("0830-1100", "New York Session", group=grp_sess)
-sess_tz       = input.string("America/New_York", "Timezone", options=["America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "UTC"], group=grp_sess)
-asia_color    = input.color(color.new(#7b2ff7, 85), "Asia Color", group=grp_sess)
-london_color  = input.color(color.new(#00d4ff, 85), "London Color", group=grp_sess)
-ny_color      = input.color(color.new(#00e676, 85), "New York Color", group=grp_sess)
-
-// Liquidity Settings
-grp_liq = "Liquidity"
-show_liquidity  = input.bool(true, "Show Liquidity Levels", group=grp_liq)
-liq_lookback    = input.int(20, "Swing Lookback", minval=3, maxval=50, group=grp_liq)
-liq_bsl_color   = input.color(color.new(#ff3d57, 0), "BSL Color", group=grp_liq)
-liq_ssl_color   = input.color(color.new(#00e676, 0), "SSL Color", group=grp_liq)
-
-// Market Structure Settings
-grp_ms = "Market Structure"
-show_structure  = input.bool(true, "Show Structure (BOS/CHoCH)", group=grp_ms)
-ms_lookback     = input.int(5, "Pivot Lookback", minval=2, maxval=20, group=grp_ms)
-bos_color       = input.color(color.new(#00d4ff, 0), "BOS Color", group=grp_ms)
-choch_color     = input.color(color.new(#ffd700, 0), "CHoCH Color", group=grp_ms)
-
-// Fair Value Gap Settings
-grp_fvg = "Fair Value Gaps"
-show_fvg        = input.bool(true, "Show FVGs", group=grp_fvg)
-fvg_bull_color  = input.color(color.new(#00d4ff, 80), "Bullish FVG", group=grp_fvg)
-fvg_bear_color  = input.color(color.new(#ff3d57, 80), "Bearish FVG", group=grp_fvg)
-fvg_max         = input.int(10, "Max FVGs Shown", minval=1, maxval=50, group=grp_fvg)
-fvg_mitigation  = input.bool(true, "Remove Mitigated FVGs", group=grp_fvg)
-
-// Order Block Settings
-grp_ob = "Order Blocks"
-show_ob         = input.bool(true, "Show Order Blocks", group=grp_ob)
-ob_bull_color   = input.color(color.new(#00e676, 80), "Bullish OB", group=grp_ob)
-ob_bear_color   = input.color(color.new(#ff3d57, 80), "Bearish OB", group=grp_ob)
-ob_max          = input.int(5, "Max OBs Shown", minval=1, maxval=20, group=grp_ob)
-
-// Liquidity Sweep Settings
-grp_sweep = "Liquidity Sweeps"
-show_sweeps     = input.bool(true, "Show Sweeps", group=grp_sweep)
-sweep_color     = input.color(color.new(#ffd700, 0), "Sweep Color", group=grp_sweep)
-
-// Kill Zone Settings
-grp_kz = "Kill Zones (Seek & Destroy)"
-show_killzones  = input.bool(true, "Show Kill Zones", group=grp_kz)
-kz_london_open  = input.session("0200-0500", "London Kill Zone", group=grp_kz)
-kz_ny_open      = input.session("0830-1100", "NY Kill Zone", group=grp_kz)
-kz_color        = input.color(color.new(#ffd700, 90), "Kill Zone Color", group=grp_kz)
-
-// Bias Settings
-grp_bias = "Daily Bias"
-show_bias       = input.bool(true, "Show Bias Table", group=grp_bias)
-bias_position   = input.string("Top Right", "Table Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp_bias)
-
-// Confluence Settings
-grp_conf = "Confluence"
-show_confluence = input.bool(true, "Show Confluence Signals", group=grp_conf)
+grp = "Settings"
+bias_pos    = input.string("Top Right", "Table Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=grp)
+bull_color  = input.color(#00e676, "Bullish Color", group=grp)
+bear_color  = input.color(#ff3d57, "Bearish Color", group=grp)
+neutral_clr = input.color(#a0a0b8, "Neutral Color", group=grp)
 
 // ============================================================================
-// SESSION TRACKING
+// BIAS CALCULATION
 // ============================================================================
 
-in_asia   = not na(time(timeframe.period, asia_start, sess_tz))
-in_london = not na(time(timeframe.period, london_start, sess_tz))
-in_ny     = not na(time(timeframe.period, ny_start, sess_tz))
+[d_open, d_close] = request.security(syminfo.tickerid, "D", [open, close])
+[h4_open, h4_close] = request.security(syminfo.tickerid, "240", [open, close])
+[h1_open, h1_close] = request.security(syminfo.tickerid, "60", [open, close])
 
-var float asia_hi  = na, var float asia_lo  = na
-var float lon_hi   = na, var float lon_lo   = na
-var float ny_hi    = na, var float ny_lo    = na
+d_bias  = d_close > d_open ? "BULLISH" : d_close < d_open ? "BEARISH" : "NEUTRAL"
+h4_bias = h4_close > h4_open ? "BULLISH" : h4_close < h4_open ? "BEARISH" : "NEUTRAL"
+h1_bias = h1_close > h1_open ? "BULLISH" : h1_close < h1_open ? "BEARISH" : "NEUTRAL"
 
-var line asia_hi_line  = na, var line asia_lo_line  = na
-var line lon_hi_line   = na, var line lon_lo_line   = na
-var line ny_hi_line    = na, var line ny_lo_line    = na
-var label asia_hi_lbl  = na, var label asia_lo_lbl  = na
-var label lon_hi_lbl   = na, var label lon_lo_lbl   = na
-var label ny_hi_lbl    = na, var label ny_lo_lbl    = na
-var box asia_bg        = na, var box lon_bg = na, var box ny_bg = na
-
-// Asia session
-asia_new = in_asia and not in_asia[1]
-if asia_new
-    asia_hi := high
-    asia_lo := low
-if in_asia
-    asia_hi := math.max(asia_hi, high)
-    asia_lo := math.min(asia_lo, low)
-
-if show_asia
-    if asia_new
-        asia_bg := box.new(bar_index, high, bar_index, low, bgcolor=asia_color, border_color=color.new(#7b2ff7, 60), border_width=1)
-    if in_asia and not na(asia_bg)
-        box.set_right(asia_bg, bar_index)
-        box.set_top(asia_bg, asia_hi)
-        box.set_bottom(asia_bg, asia_lo)
-
-    if not in_asia and in_asia[1]
-        if not na(asia_hi_line)
-            line.delete(asia_hi_line)
-            line.delete(asia_lo_line)
-            label.delete(asia_hi_lbl)
-            label.delete(asia_lo_lbl)
-        asia_hi_line := line.new(bar_index, asia_hi, bar_index + 40, asia_hi, color=color.new(#7b2ff7, 40), style=line.style_dashed, width=1)
-        asia_lo_line := line.new(bar_index, asia_lo, bar_index + 40, asia_lo, color=color.new(#7b2ff7, 40), style=line.style_dashed, width=1)
-        asia_hi_lbl  := label.new(bar_index + 2, asia_hi, "Asia High", style=label.style_none, textcolor=color.new(#7b2ff7, 20), size=size.tiny)
-        asia_lo_lbl  := label.new(bar_index + 2, asia_lo, "Asia Low", style=label.style_none, textcolor=color.new(#7b2ff7, 20), size=size.tiny)
-    if not in_asia and not na(asia_hi_line)
-        line.set_x2(asia_hi_line, bar_index + 20)
-        line.set_x2(asia_lo_line, bar_index + 20)
-
-// London session
-lon_new = in_london and not in_london[1]
-if lon_new
-    lon_hi := high
-    lon_lo := low
-if in_london
-    lon_hi := math.max(lon_hi, high)
-    lon_lo := math.min(lon_lo, low)
-
-if show_london
-    if lon_new
-        lon_bg := box.new(bar_index, high, bar_index, low, bgcolor=london_color, border_color=color.new(#00d4ff, 60), border_width=1)
-    if in_london and not na(lon_bg)
-        box.set_right(lon_bg, bar_index)
-        box.set_top(lon_bg, lon_hi)
-        box.set_bottom(lon_bg, lon_lo)
-
-    if not in_london and in_london[1]
-        if not na(lon_hi_line)
-            line.delete(lon_hi_line)
-            line.delete(lon_lo_line)
-            label.delete(lon_hi_lbl)
-            label.delete(lon_lo_lbl)
-        lon_hi_line := line.new(bar_index, lon_hi, bar_index + 40, lon_hi, color=color.new(#00d4ff, 40), style=line.style_dashed, width=1)
-        lon_lo_line := line.new(bar_index, lon_lo, bar_index + 40, lon_lo, color=color.new(#00d4ff, 40), style=line.style_dashed, width=1)
-        lon_hi_lbl  := label.new(bar_index + 2, lon_hi, "London High", style=label.style_none, textcolor=color.new(#00d4ff, 20), size=size.tiny)
-        lon_lo_lbl  := label.new(bar_index + 2, lon_lo, "London Low", style=label.style_none, textcolor=color.new(#00d4ff, 20), size=size.tiny)
-    if not in_london and not na(lon_hi_line)
-        line.set_x2(lon_hi_line, bar_index + 20)
-        line.set_x2(lon_lo_line, bar_index + 20)
-
-// NY session
-ny_new = in_ny and not in_ny[1]
-if ny_new
-    ny_hi := high
-    ny_lo := low
-if in_ny
-    ny_hi := math.max(ny_hi, high)
-    ny_lo := math.min(ny_lo, low)
-
-if show_ny
-    if ny_new
-        ny_bg := box.new(bar_index, high, bar_index, low, bgcolor=ny_color, border_color=color.new(#00e676, 60), border_width=1)
-    if in_ny and not na(ny_bg)
-        box.set_right(ny_bg, bar_index)
-        box.set_top(ny_bg, ny_hi)
-        box.set_bottom(ny_bg, ny_lo)
-
-    if not in_ny and in_ny[1]
-        if not na(ny_hi_line)
-            line.delete(ny_hi_line)
-            line.delete(ny_lo_line)
-            label.delete(ny_hi_lbl)
-            label.delete(ny_lo_lbl)
-        ny_hi_line := line.new(bar_index, ny_hi, bar_index + 40, ny_hi, color=color.new(#00e676, 40), style=line.style_dashed, width=1)
-        ny_lo_line := line.new(bar_index, ny_lo, bar_index + 40, ny_lo, color=color.new(#00e676, 40), style=line.style_dashed, width=1)
-        ny_hi_lbl  := label.new(bar_index + 2, ny_hi, "NY High", style=label.style_none, textcolor=color.new(#00e676, 20), size=size.tiny)
-        ny_lo_lbl  := label.new(bar_index + 2, ny_lo, "NY Low", style=label.style_none, textcolor=color.new(#00e676, 20), size=size.tiny)
-    if not in_ny and not na(ny_hi_line)
-        line.set_x2(ny_hi_line, bar_index + 20)
-        line.set_x2(ny_lo_line, bar_index + 20)
+f_clr(bias) =>
+    bias == "BULLISH" ? bull_color : bias == "BEARISH" ? bear_color : neutral_clr
 
 // ============================================================================
-// MARKET STRUCTURE (BOS / CHoCH)
+// TABLE
 // ============================================================================
 
-swing_hi = ta.pivothigh(high, ms_lookback, ms_lookback)
-swing_lo = ta.pivotlow(low, ms_lookback, ms_lookback)
+pos = switch bias_pos
+    "Top Right"    => position.top_right
+    "Top Left"     => position.top_left
+    "Bottom Right" => position.bottom_right
+    "Bottom Left"  => position.bottom_left
+    => position.top_right
 
-var float last_swing_hi = na
-var float last_swing_lo = na
-var int   last_hi_bar   = na
-var int   last_lo_bar   = na
-var int   trend         = 0  // 1 = bullish, -1 = bearish
+var table tbl = table.new(pos, 2, 4, bgcolor=color.new(#16161f, 0), border_color=color.new(#2a2a3a, 0), border_width=1, frame_color=color.new(#2a2a3a, 0), frame_width=2)
 
-if not na(swing_hi)
-    last_swing_hi := swing_hi
-    last_hi_bar   := bar_index - ms_lookback
+if barstate.islast
+    table.cell(tbl, 0, 0, "Timeframe", text_color=#a0a0b8, text_size=size.normal, bgcolor=color.new(#111118, 0))
+    table.cell(tbl, 1, 0, "Bias", text_color=#a0a0b8, text_size=size.normal, bgcolor=color.new(#111118, 0))
 
-if not na(swing_lo)
-    last_swing_lo := swing_lo
-    last_lo_bar   := bar_index - ms_lookback
+    table.cell(tbl, 0, 1, "Daily", text_color=#ffffff, text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 1, 1, d_bias, text_color=f_clr(d_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
 
-if show_structure
-    // BOS Bullish: close above last swing high in a bullish trend
-    if not na(last_swing_hi) and close > last_swing_hi and close[1] <= last_swing_hi
-        if trend == 1
-            line.new(last_hi_bar, last_swing_hi, bar_index, last_swing_hi, color=bos_color, style=line.style_dashed, width=1)
-            label.new(bar_index, last_swing_hi, "BOS", style=label.style_none, textcolor=bos_color, size=size.tiny)
-        else
-            line.new(last_hi_bar, last_swing_hi, bar_index, last_swing_hi, color=choch_color, style=line.style_dashed, width=1)
-            label.new(bar_index, last_swing_hi, "CHoCH", style=label.style_none, textcolor=choch_color, size=size.tiny)
-        trend := 1
+    table.cell(tbl, 0, 2, "4H", text_color=#ffffff, text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 1, 2, h4_bias, text_color=f_clr(h4_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
 
-    // BOS Bearish: close below last swing low in a bearish trend
-    if not na(last_swing_lo) and close < last_swing_lo and close[1] >= last_swing_lo
-        if trend == -1
-            line.new(last_lo_bar, last_swing_lo, bar_index, last_swing_lo, color=bos_color, style=line.style_dashed, width=1)
-            label.new(bar_index, last_swing_lo, "BOS", style=label.style_none, textcolor=bos_color, size=size.tiny)
-        else
-            line.new(last_lo_bar, last_swing_lo, bar_index, last_swing_lo, color=choch_color, style=line.style_dashed, width=1)
-            label.new(bar_index, last_swing_lo, "CHoCH", style=label.style_none, textcolor=choch_color, size=size.tiny)
-        trend := -1
-
-// ============================================================================
-// FAIR VALUE GAPS
-// ============================================================================
-
-var array<box> fvg_boxes = array.new<box>()
-var array<int> fvg_dirs  = array.new<int>()  // 1 = bull, -1 = bear
-var array<float> fvg_tops = array.new<float>()
-var array<float> fvg_bots = array.new<float>()
-
-if show_fvg
-    // Bullish FVG: low[0] > high[2]
-    bull_fvg = low > high[2] and close[1] > open[1]
-    if bull_fvg
-        b = box.new(bar_index - 1, low, bar_index + 20, high[2], bgcolor=fvg_bull_color, border_color=color.new(#00d4ff, 60), border_width=1)
-        array.push(fvg_boxes, b)
-        array.push(fvg_dirs, 1)
-        array.push(fvg_tops, low)
-        array.push(fvg_bots, high[2])
-
-    // Bearish FVG: high[0] < low[2]
-    bear_fvg = high < low[2] and close[1] < open[1]
-    if bear_fvg
-        b = box.new(bar_index - 1, low[2], bar_index + 20, high, bgcolor=fvg_bear_color, border_color=color.new(#ff3d57, 60), border_width=1)
-        array.push(fvg_boxes, b)
-        array.push(fvg_dirs, -1)
-        array.push(fvg_tops, low[2])
-        array.push(fvg_bots, high)
-
-    // Extend active FVGs and mitigate
-    if array.size(fvg_boxes) > 0
-        for i = array.size(fvg_boxes) - 1 to 0
-            bx = array.get(fvg_boxes, i)
-            d  = array.get(fvg_dirs, i)
-            t  = array.get(fvg_tops, i)
-            bt = array.get(fvg_bots, i)
-            box.set_right(bx, bar_index)
-
-            mitigated = false
-            if fvg_mitigation
-                if d == 1 and low <= bt
-                    mitigated := true
-                if d == -1 and high >= t
-                    mitigated := true
-
-            if mitigated
-                box.delete(bx)
-                array.remove(fvg_boxes, i)
-                array.remove(fvg_dirs, i)
-                array.remove(fvg_tops, i)
-                array.remove(fvg_bots, i)
-
-    // Cap max FVGs
-    while array.size(fvg_boxes) > fvg_max
-        box.delete(array.shift(fvg_boxes))
-        array.shift(fvg_dirs)
-        array.shift(fvg_tops)
-        array.shift(fvg_bots)
-
-// ============================================================================
-// ORDER BLOCKS
-// ============================================================================
-
-var array<box> ob_boxes = array.new<box>()
-var array<int> ob_dirs  = array.new<int>()
-var array<float> ob_tops = array.new<float>()
-var array<float> ob_bots = array.new<float>()
-
-if show_ob
-    // Bullish OB: last bearish candle before a bullish BOS
-    bull_ob = close > open and close[1] < open[1] and close > high[1] and not na(last_swing_lo)
-    if bull_ob
-        b = box.new(bar_index - 1, high[1], bar_index + 20, low[1], bgcolor=ob_bull_color, border_color=color.new(#00e676, 50), border_width=1)
-        array.push(ob_boxes, b)
-        array.push(ob_dirs, 1)
-        array.push(ob_tops, high[1])
-        array.push(ob_bots, low[1])
-        if array.size(ob_boxes) > 0
-            label.new(bar_index - 1, low[1], "OB", style=label.style_label_up, color=color.new(#00e676, 70), textcolor=#00e676, size=size.tiny)
-
-    // Bearish OB: last bullish candle before a bearish BOS
-    bear_ob = close < open and close[1] > open[1] and close < low[1] and not na(last_swing_hi)
-    if bear_ob
-        b = box.new(bar_index - 1, high[1], bar_index + 20, low[1], bgcolor=ob_bear_color, border_color=color.new(#ff3d57, 50), border_width=1)
-        array.push(ob_boxes, b)
-        array.push(ob_dirs, -1)
-        array.push(ob_tops, high[1])
-        array.push(ob_bots, low[1])
-        if array.size(ob_boxes) > 0
-            label.new(bar_index - 1, high[1], "OB", style=label.style_label_down, color=color.new(#ff3d57, 70), textcolor=#ff3d57, size=size.tiny)
-
-    // Extend and mitigate OBs
-    if array.size(ob_boxes) > 0
-        for i = array.size(ob_boxes) - 1 to 0
-            bx = array.get(ob_boxes, i)
-            d  = array.get(ob_dirs, i)
-            t  = array.get(ob_tops, i)
-            bt = array.get(ob_bots, i)
-            box.set_right(bx, bar_index)
-
-            mitigated = false
-            if d == 1 and close < bt
-                mitigated := true
-            if d == -1 and close > t
-                mitigated := true
-
-            if mitigated
-                box.delete(bx)
-                array.remove(ob_boxes, i)
-                array.remove(ob_dirs, i)
-                array.remove(ob_tops, i)
-                array.remove(ob_bots, i)
-
-    while array.size(ob_boxes) > ob_max
-        box.delete(array.shift(ob_boxes))
-        array.shift(ob_dirs)
-        array.shift(ob_tops)
-        array.shift(ob_bots)
-
-// ============================================================================
-// LIQUIDITY LEVELS (BSL / SSL)
-// ============================================================================
-
-liq_swing_hi = ta.pivothigh(high, liq_lookback, liq_lookback)
-liq_swing_lo = ta.pivotlow(low, liq_lookback, liq_lookback)
-
-if show_liquidity
-    if not na(liq_swing_hi)
-        line.new(bar_index - liq_lookback, liq_swing_hi, bar_index + 20, liq_swing_hi, color=liq_bsl_color, style=line.style_dotted, width=1)
-        label.new(bar_index - liq_lookback, liq_swing_hi, "$$$ BSL", style=label.style_none, textcolor=liq_bsl_color, size=size.tiny)
-
-    if not na(liq_swing_lo)
-        line.new(bar_index - liq_lookback, liq_swing_lo, bar_index + 20, liq_swing_lo, color=liq_ssl_color, style=line.style_dotted, width=1)
-        label.new(bar_index - liq_lookback, liq_swing_lo, "$$$ SSL", style=label.style_none, textcolor=liq_ssl_color, size=size.tiny)
-
-// ============================================================================
-// LIQUIDITY SWEEPS
-// ============================================================================
-
-if show_sweeps
-    // Sweep of swing high: wick above but close below
-    if not na(last_swing_hi) and high > last_swing_hi and close < last_swing_hi
-        label.new(bar_index, high, "SWEEP", style=label.style_label_down, color=color.new(sweep_color, 70), textcolor=sweep_color, size=size.tiny)
-
-    // Sweep of swing low: wick below but close above
-    if not na(last_swing_lo) and low < last_swing_lo and close > last_swing_lo
-        label.new(bar_index, low, "SWEEP", style=label.style_label_up, color=color.new(sweep_color, 70), textcolor=sweep_color, size=size.tiny)
-
-    // Sweep of session levels
-    if not na(asia_hi) and not in_asia and high > asia_hi and close < asia_hi
-        label.new(bar_index, high, "ASIA SWEEP", style=label.style_label_down, color=color.new(#7b2ff7, 70), textcolor=#ffd700, size=size.tiny)
-    if not na(asia_lo) and not in_asia and low < asia_lo and close > asia_lo
-        label.new(bar_index, low, "ASIA SWEEP", style=label.style_label_up, color=color.new(#7b2ff7, 70), textcolor=#ffd700, size=size.tiny)
-
-    if not na(lon_hi) and not in_london and high > lon_hi and close < lon_hi
-        label.new(bar_index, high, "LON SWEEP", style=label.style_label_down, color=color.new(#00d4ff, 70), textcolor=#ffd700, size=size.tiny)
-    if not na(lon_lo) and not in_london and low < lon_lo and close > lon_lo
-        label.new(bar_index, low, "LON SWEEP", style=label.style_label_up, color=color.new(#00d4ff, 70), textcolor=#ffd700, size=size.tiny)
-
-// ============================================================================
-// KILL ZONES (SEEK & DESTROY)
-// ============================================================================
-
-in_kz_london = not na(time(timeframe.period, kz_london_open, sess_tz))
-in_kz_ny     = not na(time(timeframe.period, kz_ny_open, sess_tz))
-
-kz_bg = show_killzones and in_kz_london ? color.new(#00d4ff, 94) : show_killzones and in_kz_ny ? color.new(#00e676, 94) : na
-bgcolor(kz_bg)
-
-// ============================================================================
-// DAILY BIAS TABLE
-// ============================================================================
-
-if show_bias
-    var table bias_tbl = na
-
-    pos = switch bias_position
-        "Top Right"    => position.top_right
-        "Top Left"     => position.top_left
-        "Bottom Right"  => position.bottom_right
-        "Bottom Left"   => position.bottom_left
-        => position.top_right
-
-    if barstate.islast
-        if not na(bias_tbl)
-            table.delete(bias_tbl)
-
-        bias_tbl := table.new(pos, 3, 5, bgcolor=color.new(#16161f, 0), border_color=color.new(#2a2a3a, 0), border_width=1, frame_color=color.new(#2a2a3a, 0), frame_width=1)
-
-        // Header
-        table.cell(bias_tbl, 0, 0, "Session", text_color=color.new(#a0a0b8, 0), text_size=size.tiny, bgcolor=color.new(#111118, 0))
-        table.cell(bias_tbl, 1, 0, "Range", text_color=color.new(#a0a0b8, 0), text_size=size.tiny, bgcolor=color.new(#111118, 0))
-        table.cell(bias_tbl, 2, 0, "Bias", text_color=color.new(#a0a0b8, 0), text_size=size.tiny, bgcolor=color.new(#111118, 0))
-
-        // Previous day data
-        prev_close = request.security(syminfo.tickerid, "D", close[1])
-        prev_open  = request.security(syminfo.tickerid, "D", open[1])
-
-        // Asia
-        asia_range = not na(asia_hi) and not na(asia_lo) ? asia_hi - asia_lo : 0
-        asia_bias  = not na(asia_hi) and not na(asia_lo) ? (asia_hi + asia_lo) / 2 > (not na(prev_close) ? prev_close : close) ? "Bullish" : "Bearish" : "N/A"
-        asia_clr   = asia_bias == "Bullish" ? color.new(#00e676, 0) : asia_bias == "Bearish" ? color.new(#ff3d57, 0) : color.new(#a0a0b8, 0)
-
-        table.cell(bias_tbl, 0, 1, "Asia", text_color=color.new(#7b2ff7, 0), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-        table.cell(bias_tbl, 1, 1, str.tostring(asia_range, format.mintick), text_color=color.new(#ffffff, 0), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-        table.cell(bias_tbl, 2, 1, asia_bias, text_color=asia_clr, text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-
-        // London
-        lon_range = not na(lon_hi) and not na(lon_lo) ? lon_hi - lon_lo : 0
-        lon_bias  = not na(lon_hi) and not na(lon_lo) ? (lon_hi + lon_lo) / 2 > (not na(prev_close) ? prev_close : close) ? "Bullish" : "Bearish" : "N/A"
-        lon_clr   = lon_bias == "Bullish" ? color.new(#00e676, 0) : lon_bias == "Bearish" ? color.new(#ff3d57, 0) : color.new(#a0a0b8, 0)
-
-        table.cell(bias_tbl, 0, 2, "London", text_color=color.new(#00d4ff, 0), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-        table.cell(bias_tbl, 1, 2, str.tostring(lon_range, format.mintick), text_color=color.new(#ffffff, 0), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-        table.cell(bias_tbl, 2, 2, lon_bias, text_color=lon_clr, text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-
-        // NY
-        ny_range = not na(ny_hi) and not na(ny_lo) ? ny_hi - ny_lo : 0
-        ny_bias  = not na(ny_hi) and not na(ny_lo) ? (ny_hi + ny_lo) / 2 > (not na(prev_close) ? prev_close : close) ? "Bullish" : "Bearish" : "N/A"
-        ny_clr   = ny_bias == "Bullish" ? color.new(#00e676, 0) : ny_bias == "Bearish" ? color.new(#ff3d57, 0) : color.new(#a0a0b8, 0)
-
-        table.cell(bias_tbl, 0, 3, "New York", text_color=color.new(#00e676, 0), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-        table.cell(bias_tbl, 1, 3, str.tostring(ny_range, format.mintick), text_color=color.new(#ffffff, 0), text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-        table.cell(bias_tbl, 2, 3, ny_bias, text_color=ny_clr, text_size=size.tiny, bgcolor=color.new(#16161f, 0))
-
-        // Overall
-        daily_bias = not na(prev_close) ? close > prev_close ? "BULLISH" : "BEARISH" : "N/A"
-        daily_clr  = daily_bias == "BULLISH" ? color.new(#00e676, 0) : daily_bias == "BEARISH" ? color.new(#ff3d57, 0) : color.new(#a0a0b8, 0)
-
-        table.cell(bias_tbl, 0, 4, "Daily", text_color=color.new(#ffffff, 0), text_size=size.tiny, bgcolor=color.new(#111118, 0))
-        table.cell(bias_tbl, 1, 4, "", text_size=size.tiny, bgcolor=color.new(#111118, 0))
-        table.cell(bias_tbl, 2, 4, daily_bias, text_color=daily_clr, text_size=size.tiny, bgcolor=color.new(#111118, 0))
-
-// ============================================================================
-// CONFLUENCE SIGNALS
-// ============================================================================
-
-if show_confluence and barstate.isconfirmed
-    // Check for confluence: sweep + FVG + structure alignment
-    has_sweep_low  = not na(last_swing_lo) and low < last_swing_lo and close > last_swing_lo
-    has_sweep_high = not na(last_swing_hi) and high > last_swing_hi and close < last_swing_hi
-
-    near_fvg = false
-    if array.size(fvg_boxes) > 0
-        for i = 0 to array.size(fvg_boxes) - 1
-            t  = array.get(fvg_tops, i)
-            bt = array.get(fvg_bots, i)
-            if low <= t and high >= bt
-                near_fvg := true
-                break
-
-    near_ob = false
-    if array.size(ob_boxes) > 0
-        for i = 0 to array.size(ob_boxes) - 1
-            t  = array.get(ob_tops, i)
-            bt = array.get(ob_bots, i)
-            if low <= t and high >= bt
-                near_ob := true
-                break
-
-    in_killzone = in_kz_london or in_kz_ny
-
-    // Bullish confluence
-    bull_confluence = has_sweep_low and (near_fvg or near_ob) and trend == 1
-    if bull_confluence
-        label.new(bar_index, low, "CONFLUENCE", style=label.style_label_up, color=color.new(#00e676, 50), textcolor=#00e676, size=size.small)
-
-    // Bearish confluence
-    bear_confluence = has_sweep_high and (near_fvg or near_ob) and trend == -1
-    if bear_confluence
-        label.new(bar_index, high, "CONFLUENCE", style=label.style_label_down, color=color.new(#ff3d57, 50), textcolor=#ff3d57, size=size.small)
+    table.cell(tbl, 0, 3, "1H", text_color=#ffffff, text_size=size.normal, bgcolor=color.new(#16161f, 0))
+    table.cell(tbl, 1, 3, h1_bias, text_color=f_clr(h1_bias), text_size=size.normal, bgcolor=color.new(#16161f, 0))
