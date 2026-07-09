@@ -132,8 +132,9 @@ grp_ob = 'ORDER BLOCKS'
 numObShow   = input.int(5, 'Max OBs to Show (each side)', minval = 1, maxval = 20, group = grp_ob)
 obBullClr   = input.color(color.new(#00bcd4, 70), 'Bullish OB Color', group = grp_ob)
 obBearClr   = input.color(color.new(#ff9800, 70), 'Bearish OB Color', group = grp_ob)
-obDispMult  = input.float(1.5, 'Displacement ATR Multiplier', minval = 0.3, maxval = 5.0, step = 0.1, group = grp_ob, tooltip = 'Displacement candle body must exceed this multiple of ATR(14). Lower = more OBs, higher = only strong displacements.')
-obLookback  = input.int(5, 'Lookback for OB candle (bars)', minval = 1, maxval = 20, group = grp_ob, tooltip = 'How many bars back to search for the last opposing candle that forms the OB.')
+obDispMult  = input.float(1.2, 'Displacement ATR Multiplier', minval = 0.3, maxval = 5.0, step = 0.1, group = grp_ob, tooltip = 'Displacement candle body must exceed this multiple of ATR(14). Lower = more OBs, higher = only strong displacements.')
+obLookback  = input.int(8, 'Lookback for OB candle (bars)', minval = 1, maxval = 20, group = grp_ob, tooltip = 'How many bars back to search for the last opposing candle that forms the OB.')
+obStructLen = input.int(15, 'Structure-Break Lookback (bars)', minval = 5, maxval = 100, group = grp_ob, tooltip = 'The displacement must close beyond the highest high / lowest low of this many prior bars — i.e. it must actually be the move that makes the new high/low, not a big candle that occurs mid-trend after the high/low was already made.')
 
 // --- BIAS SETTINGS ---
 grp_bias = 'BIAS PANEL'
@@ -540,11 +541,16 @@ if bearBOS
 obAtr = ta.atr(14)
 
 if showOb
-    // Only mark an OB when the displacement is the move that actually breaks
-    // structure (BOS) — filters out big-bodied candles that occur mid-trend
-    // with nothing new broken.
-    bullDisp = (close - open) > obDispMult * obAtr and close > open and bullBOS
-    bearDisp = (open - close) > obDispMult * obAtr and close < open and bearBOS
+    // Only mark an OB when the displacement candle itself is the move that
+    // breaks the recent local high/low — i.e. a real directional push, not a
+    // big-bodied candle that happens mid-trend after that level was already
+    // taken out. Checked directly against the recent range (not the separate
+    // lagged BOS pivot engine, which misses most real moves).
+    priorHigh = ta.highest(high, obStructLen)[1]
+    priorLow  = ta.lowest(low, obStructLen)[1]
+
+    bullDisp = (close - open) > obDispMult * obAtr and close > open and close > priorHigh
+    bearDisp = (open - close) > obDispMult * obAtr and close < open and close < priorLow
 
     // extend / mitigate existing OBs every bar
     if bullOBs.size() > 0
