@@ -132,10 +132,10 @@ grp_ob = 'ORDER BLOCKS'
 numObShow   = input.int(5, 'Max OBs to Show (each side)', minval = 1, maxval = 20, group = grp_ob)
 obBullClr   = input.color(color.new(#00bcd4, 70), 'Bullish OB Color', group = grp_ob)
 obBearClr   = input.color(color.new(#ff9800, 70), 'Bearish OB Color', group = grp_ob)
-obDispMult  = input.float(1.0, 'Displacement ATR Multiplier', minval = 0.2, maxval = 5.0, step = 0.1, group = grp_ob, tooltip = 'Displacement candle body must exceed this multiple of ATR(14). Lower = more OBs, higher = only strong displacements.')
+obDispMult  = input.float(2.2, 'Displacement ATR Multiplier', minval = 0.2, maxval = 5.0, step = 0.1, group = grp_ob, tooltip = 'Displacement candle body must exceed this multiple of ATR(14). Lower = more OBs, higher = only strong displacements.')
 obLookback  = input.int(8, 'Lookback for OB candle (bars)', minval = 1, maxval = 20, group = grp_ob, tooltip = 'How many bars back to search for the last opposing candle that forms the OB.')
-obReqStruct = input.bool(false, 'Require Structure-Break (stricter, fewer OBs)', group = grp_ob, tooltip = 'When on, the displacement must also close beyond the highest high / lowest low of the Structure-Break Lookback window. Off by default so real displacement moves are not filtered out.')
-obStructLen = input.int(15, 'Structure-Break Lookback (bars)', minval = 5, maxval = 100, group = grp_ob, tooltip = 'Only used when Require Structure-Break is on.')
+obReqStruct = input.bool(true, 'Require Structure-Break (recommended)', group = grp_ob, tooltip = 'The displacement must also close beyond the highest high / lowest low of the Structure-Break Lookback window, so only genuine breakout moves are marked instead of every oversized candle.')
+obStructLen = input.int(20, 'Structure-Break Lookback (bars)', minval = 5, maxval = 100, group = grp_ob, tooltip = 'Only used when Require Structure-Break is on.')
 
 // --- BIAS SETTINGS ---
 grp_bias = 'BIAS PANEL'
