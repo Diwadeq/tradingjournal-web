@@ -1,10 +1,9 @@
 //@version=6
 // =====================================================================
-//  FVG + PDH/L + Killzones + NY Open + ICT SMT + Confluence + Bias
+//  FVG + PDH/L + Killzones + NY Open + ICT SMT + Confluence + Bias + OB
 //  --------------------------------------------------------------------
-//  SMT runs TWO scales: Major (solid+labels) & 2-Candle (thin/dotted).
-//  Confluence dashboard auto-detects: SMT, FVG, iFVG, BOS.
-//  Bias panel shows current TF bias from structure, FVG, sweeps, BOS.
+//  SMT v5: sweep-rule pairing, invalidation fading, memory-based.
+//  Order Blocks: body-only box (open→close) on displacement candles.
 // =====================================================================
 indicator('FVG, PDH/L, Killzones, NY Open, SMT & Bias', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
 
@@ -32,6 +31,7 @@ showPdhl   = input.bool(true, title = 'Show Previous Day H/L', group = grp_maste
 showKz     = input.bool(true, title = 'Show Killzones (Sessions)', group = grp_master)
 showNyOpen = input.bool(true, title = 'Show NY Open Line', group = grp_master)
 showSmt    = input.bool(true, title = 'Show SMT Divergence (ES/NQ)', group = grp_master)
+showOb     = input.bool(true, title = 'Show Order Blocks (OB)', group = grp_master)
 
 // --- FVG SETTINGS ---
 grp_fvg = 'FVG SETTINGS'
@@ -96,9 +96,13 @@ nyLineStyle = switch nyLineStyleStr
 
 // --- SMT SETTINGS ---
 grp_smt = 'SMT DIVERGENCE'
-compSym      = input.symbol('CME_MINI:NQ1!', 'Comparison Symbol', group = grp_smt, tooltip = 'Load on ES1! and compare to NQ1! (or vice-versa).')
+autoComp     = input.bool(true, 'Auto ES1! <-> NQ1! Pairing', group = grp_smt, tooltip = 'On an ES chart automatically compares against CME_MINI:NQ1!, on an NQ chart against CME_MINI:ES1!. Turn off to use the manual symbol below.')
+compSym      = input.symbol('CME_MINI:NQ1!', 'Comparison Symbol (manual)', group = grp_smt, tooltip = 'Only used when Auto Pairing is off.')
 smtType      = input.string('Both', 'SMT Type to Show', options = ['Both', 'Bullish', 'Bearish'], group = grp_smt)
 maxSmt       = input.int(40, 'Max SMTs Shown (total)', minval = 1, maxval = 200, group = grp_smt)
+smtMaxAge    = input.int(300, 'Max Swing Age (bars)', minval = 20, maxval = 2000, group = grp_smt, tooltip = 'Swings older than this are no longer used for new SMT comparisons.')
+smtMaxDist   = input.int(150, 'Max Distance Between Paired Swings (bars)', minval = 10, maxval = 2000, group = grp_smt)
+fadeInvalid  = input.bool(true, 'Fade Invalidated SMTs', group = grp_smt, tooltip = 'When the holding index later takes the level anyway, the line turns thin, dotted and faded.')
 bullCol      = input.color(color.green, 'Bullish Color', group = grp_smt)
 bearCol      = input.color(color.red, 'Bearish Color', group = grp_smt)
 showSmtLbl   = input.bool(true, 'Show Labels (Major only)', group = grp_smt)
@@ -109,17 +113,27 @@ grp_smtM = 'SMT — MAJOR (big swings)'
 showMajor = input.bool(true, 'Show Major SMT', group = grp_smtM)
 majorLen  = input.int(5, 'Major Pivot Strength', minval = 1, group = grp_smtM, tooltip = 'Bars each side that define a major swing.')
 majorW    = input.int(2, 'Major Line Width', minval = 1, maxval = 5, group = grp_smtM)
+majorMem  = input.int(10, 'Major Swings Remembered', minval = 1, maxval = 50, group = grp_smtM)
 
 grp_smtN = 'SMT — 2-CANDLE (small swings)'
 showMinor   = input.bool(true, 'Show 2-Candle SMT', group = grp_smtN)
 minorW      = input.int(1, '2-Candle Line Width', minval = 1, maxval = 5, group = grp_smtN)
 minorDotted = input.bool(true, '2-Candle Lines Dotted', group = grp_smtN)
+minorMem    = input.int(5, '2-Candle Swings Remembered', minval = 1, maxval = 50, group = grp_smtN)
 
 // --- BOS SETTINGS ---
 grp_bos = 'BOS (Break of Structure)'
 showBos = input.bool(true, 'Detect BOS', group = grp_bos, tooltip = 'Auto-detect when price closes through the last major swing high/low.')
 bosLen  = input.int(5, 'BOS Pivot Strength', minval = 1, group = grp_bos)
 drawBos = input.bool(false, 'Draw BOS markers on chart', group = grp_bos)
+
+// --- ORDER BLOCK SETTINGS ---
+grp_ob = 'ORDER BLOCKS'
+numObShow   = input.int(5, 'Max OBs to Show (each side)', minval = 1, maxval = 20, group = grp_ob)
+obBullClr   = input.color(color.new(#00bcd4, 70), 'Bullish OB Color', group = grp_ob)
+obBearClr   = input.color(color.new(#ff9800, 70), 'Bearish OB Color', group = grp_ob)
+obDispMult  = input.float(1.5, 'Displacement ATR Multiplier', minval = 0.3, maxval = 5.0, step = 0.1, group = grp_ob, tooltip = 'Displacement candle body must exceed this multiple of ATR(14). Lower = more OBs, higher = only strong displacements.')
+obLookback  = input.int(5, 'Lookback for OB candle (bars)', minval = 1, maxval = 20, group = grp_ob, tooltip = 'How many bars back to search for the last opposing candle that forms the OB.')
 
 // --- BIAS SETTINGS ---
 grp_bias = 'BIAS PANEL'
@@ -154,6 +168,13 @@ type FVG
 var bullFvgs = array.new<FVG>()
 var bearFvgs = array.new<FVG>()
 
+type OB
+    box  id
+    bool isActive
+
+var bullOBs = array.new<OB>()
+var bearOBs = array.new<OB>()
+
 type kz
     string _title
     array<box> _box
@@ -167,6 +188,17 @@ type kz_helper
 type SMT
     line  ln
     label lb
+
+type Swing
+    float price
+    float cmp
+    int   bar
+    bool  chartBroke    = false
+    bool  compBroke     = false
+    int   chartBrokeBar = na
+    int   compBrokeBar  = na
+    line  ln = na
+    label lb = na
 
 initKZ() =>
     array<kz_helper> res = array.new<kz_helper>()
@@ -318,12 +350,18 @@ if showNyOpen
         line.new(x1 = bar_index, y1 = high, x2 = bar_index, y2 = low, color = nyLineColor, width = nyLineWidth, style = nyLineStyle, extend = extend.both)
 
 // =========================================================================
-// 5. SMT DIVERGENCE LOGIC
+// 5. SMT DIVERGENCE LOGIC (v5 — sweep rule, no dashed preview)
 // =========================================================================
-[compHigh, compLow] = request.security(compSym, timeframe.period, [high, low])
+
+isNqChart = str.contains(syminfo.ticker, 'NQ')
+isEsChart = str.contains(syminfo.ticker, 'ES')
+effCompSym = autoComp and isNqChart ? 'CME_MINI:ES1!' : autoComp and isEsChart ? 'CME_MINI:NQ1!' : compSym
+
+[compHigh, compLow] = request.security(effCompSym, timeframe.period, [high, low])
 
 chartName = syminfo.ticker
-compName  = array.last(str.split(compSym, ':'))
+compName  = array.last(str.split(effCompSym, ':'))
+sameSymWarn = compName == chartName
 
 addSMT(line ln, label lb) =>
     smts.push(SMT.new(ln, lb))
@@ -333,54 +371,128 @@ addSMT(line ln, label lb) =>
         if not na(old.lb)
             label.delete(old.lb)
 
-drawSMT(int b1, float p1, int b2, float p2, bool isBear, int w, bool dotted, bool withLbl) =>
+pairSMT(Swing s, int b2, float p2, bool isBear, int w, bool dotted, bool withLbl) =>
     col = isBear ? bearCol : bullCol
     st  = dotted ? line.style_dotted : line.style_solid
-    ln  = line.new(b1, p1, b2, p2, color = col, width = w, style = st)
-    lb  = withLbl ? label.new(b2, p2, 'SMT', style = isBear ? label.style_label_down : label.style_label_up, color = color.new(col, 20), textcolor = color.white, size = smtLblSize) : na
-    addSMT(ln, lb)
+    line.delete(s.ln)
+    label.delete(s.lb)
+    s.ln := line.new(s.bar, s.price, b2, p2, color = col, width = w, style = st)
+    s.lb := withLbl ? label.new(b2, p2, 'SMT', style = isBear ? label.style_label_down : label.style_label_up, color = color.new(col, 20), textcolor = color.white, size = smtLblSize) : na
+    addSMT(s.ln, s.lb)
 
-processSMT(bool enabled, simple int len, int w, bool dotted, bool withLbl) =>
-    var float pHi    = na
-    var float pHiCmp = na
-    var int   pHiBar = na
-    var float pLo    = na
-    var float pLoCmp = na
-    var int   pLoBar = na
+fadeSMT(Swing s, color baseCol) =>
+    if fadeInvalid and not na(s.ln) and array.includes(line.all, s.ln)
+        line.set_style(s.ln, line.style_dotted)
+        line.set_width(s.ln, 1)
+        line.set_color(s.ln, color.new(baseCol, 70))
+    if fadeInvalid and not na(s.lb) and array.includes(label.all, s.lb)
+        label.set_color(s.lb, color.new(baseCol, 85))
+        label.set_textcolor(s.lb, color.new(color.white, 50))
+
+processSMT(bool enabled, simple int len, int w, bool dotted, bool withLbl, int mem) =>
+    var array<Swing> shArr = array.new<Swing>()
+    var array<Swing> slArr = array.new<Swing>()
 
     string rDir = na
     int    rBar = na
 
-    ph = ta.pivothigh(high, len, len)
-    pl = ta.pivotlow(low,  len, len)
-    cH = compHigh[len]
-    cL = compLow[len]
-    pbar = bar_index - len
+    ph      = ta.pivothigh(high, len, len)
+    pl      = ta.pivotlow(low,  len, len)
+    cH      = compHigh[len]
+    cL      = compLow[len]
+    cHafter = ta.highest(compHigh, len)
+    cLafter = ta.lowest(compLow,   len)
+    pbar    = bar_index - len
 
-    if enabled and not na(ph) and not na(cH)
-        if not na(pHi) and not na(pHiCmp) and (smtType == 'Both' or smtType == 'Bearish')
-            if (ph > pHi and cH < pHiCmp) or (ph < pHi and cH > pHiCmp)
-                drawSMT(pHiBar, pHi, pbar, ph, true, w, dotted, withLbl)
-                rDir := 'Bearish'
-                rBar := pbar
-        pHi    := ph
-        pHiCmp := cH
-        pHiBar := pbar
+    if enabled
+        // update remembered swing highs
+        if shArr.size() > 0
+            for i = shArr.size() - 1 to 0
+                Swing s = shArr.get(i)
+                if high > s.price and not s.chartBroke
+                    s.chartBroke := true
+                    s.chartBrokeBar := bar_index
+                if compHigh > s.cmp and not s.compBroke
+                    s.compBroke := true
+                    s.compBrokeBar := bar_index
+                if s.chartBroke and s.compBroke
+                    fadeSMT(s, bearCol)
+                    shArr.remove(i)
+                else if bar_index - s.bar > smtMaxAge
+                    shArr.remove(i)
 
-    if enabled and not na(pl) and not na(cL)
-        if not na(pLo) and not na(pLoCmp) and (smtType == 'Both' or smtType == 'Bullish')
-            if (pl < pLo and cL > pLoCmp) or (pl > pLo and cL < pLoCmp)
-                drawSMT(pLoBar, pLo, pbar, pl, false, w, dotted, withLbl)
-                rDir := 'Bullish'
-                rBar := pbar
-        pLo    := pl
-        pLoCmp := cL
-        pLoBar := pbar
+        // update remembered swing lows
+        if slArr.size() > 0
+            for i = slArr.size() - 1 to 0
+                Swing s = slArr.get(i)
+                if low < s.price and not s.chartBroke
+                    s.chartBroke := true
+                    s.chartBrokeBar := bar_index
+                if compLow < s.cmp and not s.compBroke
+                    s.compBroke := true
+                    s.compBrokeBar := bar_index
+                if s.chartBroke and s.compBroke
+                    fadeSMT(s, bullCol)
+                    slArr.remove(i)
+                else if bar_index - s.bar > smtMaxAge
+                    slArr.remove(i)
+
+        // new confirmed swing HIGH: pair with freshly-swept level
+        if not na(ph)
+            if shArr.size() > 0 and (smtType == 'Both' or smtType == 'Bearish')
+                int bestIdx = -1
+                float bestPrice = na
+                for i = 0 to shArr.size() - 1
+                    Swing s = shArr.get(i)
+                    bool chartSweep = ph > s.price and cH < s.cmp
+                    bool compSweep  = ph < s.price and cH > s.cmp
+                    bool fresh = chartSweep ? not na(s.chartBrokeBar) and bar_index - s.chartBrokeBar <= 2 * len : compSweep ? not na(s.compBrokeBar) and bar_index - s.compBrokeBar <= 2 * len : false
+                    if (chartSweep or compSweep) and fresh and pbar - s.bar <= smtMaxDist
+                        if na(bestPrice) or s.price > bestPrice
+                            bestPrice := s.price
+                            bestIdx := i
+                if bestIdx != -1
+                    pairSMT(shArr.get(bestIdx), pbar, ph, true, w, dotted, withLbl)
+                    rDir := 'Bearish'
+                    rBar := pbar
+            Swing newH = Swing.new(ph, cH, pbar)
+            if cHafter > cH
+                newH.compBroke := true
+                newH.compBrokeBar := bar_index
+            shArr.push(newH)
+            if shArr.size() > mem
+                shArr.shift()
+
+        // new confirmed swing LOW: pair with freshly-swept level
+        if not na(pl)
+            if slArr.size() > 0 and (smtType == 'Both' or smtType == 'Bullish')
+                int bestIdx = -1
+                float bestPrice = na
+                for i = 0 to slArr.size() - 1
+                    Swing s = slArr.get(i)
+                    bool chartSweep = pl < s.price and cL > s.cmp
+                    bool compSweep  = pl > s.price and cL < s.cmp
+                    bool fresh = chartSweep ? not na(s.chartBrokeBar) and bar_index - s.chartBrokeBar <= 2 * len : compSweep ? not na(s.compBrokeBar) and bar_index - s.compBrokeBar <= 2 * len : false
+                    if (chartSweep or compSweep) and fresh and pbar - s.bar <= smtMaxDist
+                        if na(bestPrice) or s.price < bestPrice
+                            bestPrice := s.price
+                            bestIdx := i
+                if bestIdx != -1
+                    pairSMT(slArr.get(bestIdx), pbar, pl, false, w, dotted, withLbl)
+                    rDir := 'Bullish'
+                    rBar := pbar
+            Swing newL = Swing.new(pl, cL, pbar)
+            if cLafter < cL
+                newL.compBroke := true
+                newL.compBrokeBar := bar_index
+            slArr.push(newL)
+            if slArr.size() > mem
+                slArr.shift()
 
     [rDir, rBar]
 
-[mjDir, mjBar] = processSMT(showSmt and showMajor, majorLen, majorW, false, showSmtLbl)
-[mnDir, mnBar] = processSMT(showSmt and showMinor, 1, minorW, minorDotted, false)
+[mjDir, mjBar] = processSMT(showSmt and showMajor, majorLen, majorW, false, showSmtLbl, majorMem)
+[mnDir, mnBar] = processSMT(showSmt and showMinor, 1, minorW, minorDotted, false, minorMem)
 
 if not na(mjBar)
     smtDir := mjDir
@@ -419,14 +531,78 @@ if bearBOS
         label.new(bar_index, swingLow, 'BOS', style = label.style_label_up, color = color.new(bearCol, 20), textcolor = color.white, size = size.tiny)
 
 // =========================================================================
-// 7. HTF BIAS — 1H / 4H / Daily (only updates on candle close)
+// 7. ORDER BLOCKS
+// =========================================================================
+// Bullish OB: last bearish candle before a bullish displacement.
+// Bearish OB: last bullish candle before a bearish displacement.
+// Box covers the body only (open → close), extends right until mitigated.
+
+obAtr = ta.atr(14)
+
+if showOb
+    bullDisp = (close - open) > obDispMult * obAtr and close > open
+    bearDisp = (open - close) > obDispMult * obAtr and close < open
+
+    // extend / mitigate existing OBs every bar
+    if bullOBs.size() > 0
+        for i = bullOBs.size() - 1 to 0 by 1
+            ob = bullOBs.get(i)
+            if ob.isActive
+                if close < box.get_bottom(ob.id)
+                    ob.isActive := false
+                    box.set_right(ob.id, bar_index)
+                else
+                    box.set_right(ob.id, bar_index + 1)
+
+    if bearOBs.size() > 0
+        for i = bearOBs.size() - 1 to 0 by 1
+            ob = bearOBs.get(i)
+            if ob.isActive
+                if close > box.get_top(ob.id)
+                    ob.isActive := false
+                    box.set_right(ob.id, bar_index)
+                else
+                    box.set_right(ob.id, bar_index + 1)
+
+    // new bullish displacement → find last bearish body (OB)
+    if bullDisp
+        int obIdx = -1
+        for i = 1 to obLookback
+            if close[i] < open[i]
+                obIdx := i
+                break
+        if obIdx != -1
+            obTop = math.max(open[obIdx], close[obIdx])
+            obBot = math.min(open[obIdx], close[obIdx])
+            b = box.new(bar_index - obIdx, obTop, bar_index + 1, obBot, bgcolor = obBullClr, border_color = color.new(#00bcd4, 20), border_width = 1)
+            label.new(bar_index - obIdx, obTop, 'OB', style = label.style_label_down, color = color.new(#00bcd4, 30), textcolor = color.white, size = size.tiny)
+            bullOBs.push(OB.new(b, true))
+            if bullOBs.size() > numObShow
+                old = bullOBs.shift()
+                box.delete(old.id)
+
+    // new bearish displacement → find last bullish body (OB)
+    if bearDisp
+        int obIdx = -1
+        for i = 1 to obLookback
+            if close[i] > open[i]
+                obIdx := i
+                break
+        if obIdx != -1
+            obTop = math.max(open[obIdx], close[obIdx])
+            obBot = math.min(open[obIdx], close[obIdx])
+            b = box.new(bar_index - obIdx, obTop, bar_index + 1, obBot, bgcolor = obBearClr, border_color = color.new(#ff9800, 20), border_width = 1)
+            label.new(bar_index - obIdx, obBot, 'OB', style = label.style_label_up, color = color.new(#ff9800, 30), textcolor = color.white, size = size.tiny)
+            bearOBs.push(OB.new(b, true))
+            if bearOBs.size() > numObShow
+                old = bearOBs.shift()
+                box.delete(old.id)
+
+// =========================================================================
+// 8. HTF BIAS — 1H / 4H / Daily (only updates on candle close)
 // =========================================================================
 
-// Bias calculation runs inside request.security so it uses confirmed HTF candles only.
-// Each TF gets: structure (HH/HL/LH/LL), BOS, FVG respect/disrespect, sweeps, displacement.
-
 calc_htf_bias(simple int pvt) =>
-    // Swings
     _ph = ta.pivothigh(high, pvt, pvt)
     _pl = ta.pivotlow(low, pvt, pvt)
 
@@ -440,21 +616,18 @@ calc_htf_bias(simple int pvt) =>
         _sl1 := _sl0
         _sl0 := _pl
 
-    // Structure
     _hh = not na(_sh0) and not na(_sh1) and _sh0 > _sh1
     _hl = not na(_sl0) and not na(_sl1) and _sl0 > _sl1
     _lh = not na(_sh0) and not na(_sh1) and _sh0 < _sh1
     _ll = not na(_sl0) and not na(_sl1) and _sl0 < _sl1
     _struct = (_hh ? 1.0 : _lh ? -1.0 : 0.0) + (_hl ? 1.0 : _ll ? -1.0 : 0.0)
 
-    // BOS
     var int _bos = 0
     if not na(_sh0) and close > _sh0 and close[1] <= _sh0
         _bos := 1
     if not na(_sl0) and close < _sl0 and close[1] >= _sl0
         _bos := -1
 
-    // FVG respect / disrespect
     _bull_fvg = low > high[2] and close[1] > open[1]
     _bear_fvg = high < low[2] and close[1] < open[1]
 
@@ -482,33 +655,26 @@ calc_htf_bias(simple int pvt) =>
 
     _fvg_s = (_bf_resp ? 1.5 : _bf_dis ? -1.5 : 0.0) + (_sf_resp ? -1.5 : _sf_dis ? 1.5 : 0.0)
 
-    // Sweeps
     var int _sw = 0
     if not na(_sl0) and low < _sl0 and close > _sl0
         _sw := 1
     if not na(_sh0) and high > _sh0 and close < _sh0
         _sw := -1
 
-    // Displacement
     _body = math.abs(close - open)
     _rng  = high - low
     _disp = _rng > 0 ? _body / _rng : 0.0
     _ds   = _disp > 0.7 ? (close > open ? 0.5 : -0.5) : 0.0
 
-    // Composite
     _total = _struct + _bos * 2.0 + _fvg_s + _sw * 1.5 + _ds
     _bias  = _total > 0.5 ? 1 : _total < -0.5 ? -1 : 0
 
     [_bias, _struct, _bos, _fvg_s > 0 ? 1 : _fvg_s < 0 ? -1 : 0, _sw]
 
-// Request each HTF — barmerge.lookahead_off + barstate.isconfirmed equivalent:
-// request.security uses confirmed bars by default (no lookahead), so bias only
-// updates when the HTF candle closes.
 [h1_bias, h1_struct, h1_bos, h1_fvg, h1_sweep]  = request.security(syminfo.tickerid, '60',  calc_htf_bias(biasPivot))
 [h4_bias, h4_struct, h4_bos, h4_fvg, h4_sweep]   = request.security(syminfo.tickerid, '240', calc_htf_bias(biasPivot))
 [d_bias, d_struct, d_bos, d_fvg, d_sweep]         = request.security(syminfo.tickerid, 'D',   calc_htf_bias(biasPivot))
 
-// String helpers for the bias panel
 f_bias_str(int b) => b == 1 ? 'BULLISH' : b == -1 ? 'BEARISH' : 'NEUTRAL'
 f_bias_dir(int b) => b == 1 ? 'Bullish' : b == -1 ? 'Bearish' : 'None'
 f_struct_str(float s) => s > 1.5 ? 'HH + HL' : s > 0 ? 'HH or HL' : s < -1.5 ? 'LH + LL' : s < 0 ? 'LH or LL' : 'Ranging'
@@ -516,12 +682,11 @@ f_bos_str(int b) => b == 1 ? 'Bull BOS' : b == -1 ? 'Bear BOS' : '–'
 f_fvg_str(int f) => f == 1 ? 'Respected' : f == -1 ? 'Disrespected' : '–'
 f_sweep_str(int s) => s == 1 ? 'SSL Swept' : s == -1 ? 'BSL Swept' : '–'
 
-// For confluence dashboard row
 bp_bias_str = f_bias_str(h1_bias)
 bp_bias_dir = f_bias_dir(h1_bias)
 
 // =========================================================================
-// 8. CONFLUENCE DASHBOARD (Top) + BIAS PANEL (Bottom)
+// 9. CONFLUENCE DASHBOARD (Top) + BIAS PANEL (Bottom)
 // =========================================================================
 agoStr(int b) => na(b) ? '' : ' (' + str.tostring(bar_index - b) + ')'
 confCol(string dir) => dir == 'Bullish' ? bullCol : dir == 'Bearish' ? bearCol : color.gray
@@ -529,12 +694,11 @@ confTxt(string dir, int b) => dir == 'None' ? '–' : dir + agoStr(b)
 
 biasCol(string dir) => dir == 'Bullish' ? biasBullClr : dir == 'Bearish' ? biasBearClr : biasNeutClr
 
-// --- Confluence Dashboard (top) ---
 var table dash = table.new(dashPos, 2, 7, border_width = 1, frame_color = color.new(color.gray, 50), frame_width = 1)
 
 if showDash and barstate.islast
     table.cell(dash, 0, 0, 'CONFLUENCE', text_color = color.white, text_size = size.normal, bgcolor = color.new(color.black, 0))
-    table.cell(dash, 1, 0, chartName + ' / ' + compName, text_color = color.white, text_size = size.small, bgcolor = color.new(color.black, 0))
+    table.cell(dash, 1, 0, chartName + ' / ' + compName + (sameSymWarn ? ' ⚠' : ''), text_color = sameSymWarn ? color.red : color.white, text_size = size.small, bgcolor = color.new(color.black, 0), tooltip = sameSymWarn ? 'Comparison symbol is the SAME as the chart — SMT impossible. Enable Auto Pairing or set a different symbol.' : na)
 
     int r = 1
     if dRowSmt
@@ -566,40 +730,36 @@ var table biasTbl = table.new(biasBottomPos, 6, 4, border_width = 1, frame_color
 biasRowCol(int b) => b == 1 ? biasBullClr : b == -1 ? biasBearClr : biasNeutClr
 
 if showBias and barstate.islast
-    // Header row
-    table.cell(biasTbl, 0, 0, 'TF',        text_color = #ffd700,      text_size = size.small, bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 1, 0, 'Bias',       text_color = #ffd700,      text_size = size.small, bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 2, 0, 'Structure',  text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 3, 0, 'BOS',        text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 4, 0, 'FVG',        text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
-    table.cell(biasTbl, 5, 0, 'Sweep',      text_color = color.silver,  text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 0, 0, 'TF',        text_color = #ffd700,     text_size = size.small, bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 1, 0, 'Bias',       text_color = #ffd700,     text_size = size.small, bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 2, 0, 'Structure',  text_color = color.silver, text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 3, 0, 'BOS',        text_color = color.silver, text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 4, 0, 'FVG',        text_color = color.silver, text_size = size.tiny,  bgcolor = color.new(color.black, 0))
+    table.cell(biasTbl, 5, 0, 'Sweep',      text_color = color.silver, text_size = size.tiny,  bgcolor = color.new(color.black, 0))
 
-    // 1H row
-    table.cell(biasTbl, 0, 1, '1H',                text_color = color.white,  text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 1, f_bias_str(h1_bias),  text_color = biasRowCol(h1_bias),  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 0, 1, '1H',                  text_color = color.white, text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 1, 1, f_bias_str(h1_bias),   text_color = biasRowCol(h1_bias), text_size = size.small, bgcolor = color.new(color.black, 20))
     table.cell(biasTbl, 2, 1, f_struct_str(h1_struct), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_struct > 0 ? 1 : h1_struct < 0 ? -1 : 0), 40))
-    table.cell(biasTbl, 3, 1, f_bos_str(h1_bos),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_bos), 40))
-    table.cell(biasTbl, 4, 1, f_fvg_str(h1_fvg),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_fvg), 40))
-    table.cell(biasTbl, 5, 1, f_sweep_str(h1_sweep), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_sweep), 40))
+    table.cell(biasTbl, 3, 1, f_bos_str(h1_bos),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_bos), 40))
+    table.cell(biasTbl, 4, 1, f_fvg_str(h1_fvg),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_fvg), 40))
+    table.cell(biasTbl, 5, 1, f_sweep_str(h1_sweep),  text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h1_sweep), 40))
 
-    // 4H row
-    table.cell(biasTbl, 0, 2, '4H',                text_color = color.white,  text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 2, f_bias_str(h4_bias),  text_color = biasRowCol(h4_bias),  text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 0, 2, '4H',                  text_color = color.white, text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 1, 2, f_bias_str(h4_bias),   text_color = biasRowCol(h4_bias), text_size = size.small, bgcolor = color.new(color.black, 20))
     table.cell(biasTbl, 2, 2, f_struct_str(h4_struct), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_struct > 0 ? 1 : h4_struct < 0 ? -1 : 0), 40))
-    table.cell(biasTbl, 3, 2, f_bos_str(h4_bos),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_bos), 40))
-    table.cell(biasTbl, 4, 2, f_fvg_str(h4_fvg),    text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_fvg), 40))
-    table.cell(biasTbl, 5, 2, f_sweep_str(h4_sweep), text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_sweep), 40))
+    table.cell(biasTbl, 3, 2, f_bos_str(h4_bos),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_bos), 40))
+    table.cell(biasTbl, 4, 2, f_fvg_str(h4_fvg),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_fvg), 40))
+    table.cell(biasTbl, 5, 2, f_sweep_str(h4_sweep),  text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(h4_sweep), 40))
 
-    // Daily row
-    table.cell(biasTbl, 0, 3, '1D',                text_color = color.white,  text_size = size.small, bgcolor = color.new(color.black, 20))
-    table.cell(biasTbl, 1, 3, f_bias_str(d_bias),   text_color = biasRowCol(d_bias),   text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 0, 3, '1D',                  text_color = color.white, text_size = size.small, bgcolor = color.new(color.black, 20))
+    table.cell(biasTbl, 1, 3, f_bias_str(d_bias),    text_color = biasRowCol(d_bias), text_size = size.small, bgcolor = color.new(color.black, 20))
     table.cell(biasTbl, 2, 3, f_struct_str(d_struct),  text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_struct > 0 ? 1 : d_struct < 0 ? -1 : 0), 40))
-    table.cell(biasTbl, 3, 3, f_bos_str(d_bos),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_bos), 40))
-    table.cell(biasTbl, 4, 3, f_fvg_str(d_fvg),     text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_fvg), 40))
-    table.cell(biasTbl, 5, 3, f_sweep_str(d_sweep),  text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_sweep), 40))
+    table.cell(biasTbl, 3, 3, f_bos_str(d_bos),      text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_bos), 40))
+    table.cell(biasTbl, 4, 3, f_fvg_str(d_fvg),      text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_fvg), 40))
+    table.cell(biasTbl, 5, 3, f_sweep_str(d_sweep),   text_color = color.white, text_size = size.tiny, bgcolor = color.new(biasRowCol(d_sweep), 40))
 
 // =========================================================================
-// 9. ALERTS
+// 10. ALERTS
 // =========================================================================
 alertPh = ta.pivothigh(high, 1, 1)
 alertPl = ta.pivotlow(low, 1, 1)
