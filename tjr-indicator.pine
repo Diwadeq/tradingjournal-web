@@ -573,7 +573,7 @@ if showOb
                 break
         if obIdx != -1
             obTop = math.max(open[obIdx], close[obIdx])
-            obBot = math.min(open[obIdx], close[obIdx])
+            obBot = low[obIdx]
             b = box.new(bar_index - obIdx, obTop, bar_index + 1, obBot, bgcolor = obBullClr, border_color = color.new(#00bcd4, 20), border_width = 1)
             label.new(bar_index - obIdx, obTop, 'OB', style = label.style_label_down, color = color.new(#00bcd4, 30), textcolor = color.white, size = size.tiny)
             bullOBs.push(OB.new(b, true))
@@ -589,7 +589,7 @@ if showOb
                 obIdx := i
                 break
         if obIdx != -1
-            obTop = math.max(open[obIdx], close[obIdx])
+            obTop = high[obIdx]
             obBot = math.min(open[obIdx], close[obIdx])
             b = box.new(bar_index - obIdx, obTop, bar_index + 1, obBot, bgcolor = obBearClr, border_color = color.new(#ff9800, 20), border_width = 1)
             label.new(bar_index - obIdx, obBot, 'OB', style = label.style_label_up, color = color.new(#ff9800, 30), textcolor = color.white, size = size.tiny)
