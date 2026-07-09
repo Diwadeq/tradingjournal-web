@@ -540,8 +540,11 @@ if bearBOS
 obAtr = ta.atr(14)
 
 if showOb
-    bullDisp = (close - open) > obDispMult * obAtr and close > open
-    bearDisp = (open - close) > obDispMult * obAtr and close < open
+    // Only mark an OB when the displacement is the move that actually breaks
+    // structure (BOS) — filters out big-bodied candles that occur mid-trend
+    // with nothing new broken.
+    bullDisp = (close - open) > obDispMult * obAtr and close > open and bullBOS
+    bearDisp = (open - close) > obDispMult * obAtr and close < open and bearBOS
 
     // extend / mitigate existing OBs every bar
     if bullOBs.size() > 0
